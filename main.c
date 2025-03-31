@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -44,7 +46,7 @@ void sigchld_handler(int sig) {
         
         printf("Child PID %d exited with status %d\n", pid, WEXITSTATUS(status));
         
-        if (child_count >= total_children) {
+        if (child_count > total_children) {
             printf("All children have exited. Parent terminating.\n");
             exit(EXIT_SUCCESS);
         }
