@@ -83,54 +83,55 @@ void daemon_signal_handler(int sig) {
 }
 
 // Function to become a daemon
-void become_daemon() {
-    pid_t pid = fork();
+int become_daemon() {
+    int maxfd, fd;
     
-    if (pid < 0) {
-        perror("fork");
-        exit(EXIT_FAILURE);
+    // First fork: Parent exits, child continues
+    switch (fork()) {
+        case -1: return -1;  // Error
+        case 0: break;       // Child continues execution
+        default: _exit(EXIT_SUCCESS);  // Parent exits
     }
-    
-    if (pid > 0) {
-        // Parent exits
-        exit(EXIT_SUCCESS);
+
+    // Create new session and become session leader
+    if (setsid() == -1) {
+        perror("setsid failed");
+        return -1;
     }
-    
-    // Child continues
-    daemon_pid = getpid();
-    
-    // Create a new session
-    if (setsid() < 0) {
-        perror("setsid");
-        exit(EXIT_FAILURE);
+
+    // Second fork: Ensures the daemon is not a session leader
+    switch (fork()) {
+        case -1: return -1;  // Error
+        case 0: break;       // Child continues execution
+        default: _exit(EXIT_SUCCESS);  // Parent exits
     }
-    
-    // Change working directory
-    chdir("/");
-    
-    // Close standard file descriptors
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
-    
-    // Redirect stdout and stderr to log file
-    int fd = open(LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd < 0) {
-        exit(EXIT_FAILURE);
+
+    // Set file permissions (optional, for security)
+    umask(0);
+
+    // Change working directory to root
+    if (chdir("/") == -1) {
+        perror("chdir failed");
+        return -1;
     }
-    dup2(fd, STDOUT_FILENO);
-    dup2(fd, STDERR_FILENO);
-    close(fd);
-    
-    // Set up signal handlers
-    signal(SIGUSR1, daemon_signal_handler);
-    signal(SIGHUP, daemon_signal_handler);
-    signal(SIGTERM, daemon_signal_handler);
-    
-    // Log daemon startup
-    time_t now;
-    time(&now);
-    printf("[%s] Daemon started with PID %d\n", ctime(&now), daemon_pid);
+
+    // Close all open file descriptors
+    maxfd = sysconf(_SC_OPEN_MAX);
+    if (maxfd == -1) maxfd = 1024;  // If sysconf fails, use 1024 as default
+    for (fd = 0; fd < maxfd; fd++) {
+        close(fd);
+    }
+
+    // Redirect standard file descriptors to /dev/null
+    fd = open("/dev/null", O_RDWR);
+    if (fd != -1) {
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        if (fd > 2) close(fd);
+    }
+
+    return 0;
 }
 
 // // Child process 1: Reads numbers and determines the larger one
@@ -267,11 +268,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <num1> <num2>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-    
+
     int num1 = atoi(argv[1]);
     int num2 = atoi(argv[2]);
-    int result = 0; // As per requirements
-    
+
     // Create FIFOs
     if (mkfifo(FIFO1, 0666) < 0 && errno != EEXIST) {
         perror("mkfifo FIFO1");
@@ -282,7 +282,7 @@ int main(int argc, char *argv[]) {
         unlink(FIFO1);
         exit(EXIT_FAILURE);
     }
-    
+
     // Set up SIGCHLD handler
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
@@ -294,83 +294,35 @@ int main(int argc, char *argv[]) {
         unlink(FIFO2);
         exit(EXIT_FAILURE);
     }
-    
-    // Fork to create daemon process
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork for daemon");
-        unlink(FIFO1);
-        unlink(FIFO2);
-        exit(EXIT_FAILURE);
+
+    // Create two child processes
+    pid_t child1 = fork();
+    if (child1 == 0) {
+        child_process1();
     }
-    
-    if (pid == 0) {
-        // Daemon process
-        become_daemon();
-        
-        // Daemon main loop
-        while (1) {
-            sleep(5); // Check every 5 seconds
-        }
-    } else {
-        // Parent process continues
-        
-        // Open FIFO1 for writing
-        int fd1 = open(FIFO1, O_WRONLY);
-        if (fd1 < 0) {
-            perror("parent: open FIFO1");
-            unlink(FIFO1);
-            unlink(FIFO2);
-            exit(EXIT_FAILURE);
-        }
-        
-        // Write the two numbers to FIFO1
-        int nums[2] = {num1, num2};
-        if (write(fd1, nums, sizeof(nums)) < 0) {
-            perror("parent: write to FIFO1");
-            close(fd1);
-            unlink(FIFO1);
-            unlink(FIFO2);
-            exit(EXIT_FAILURE);
-        }
-        close(fd1);
-        
-        // Create two child processes
-        pid_t child1 = fork();
-        if (child1 < 0) {
-            perror("fork child1");
-            unlink(FIFO1);
-            unlink(FIFO2);
-            exit(EXIT_FAILURE);
-        }
-        
-        if (child1 == 0) {
-            // Child process 1
-            child_process1();
-        } else {
-            pid_t child2 = fork();
-            if (child2 < 0) {
-                perror("fork child2");
-                unlink(FIFO1);
-                unlink(FIFO2);
-                exit(EXIT_FAILURE);
-            }
-            
-            if (child2 == 0) {
-                // Child process 2
-                child_process2();
-            } else {
-                // Parent process
-                total_children = 2; // We have 2 children
-                
-                // Main loop - print "proceeding" every 2 seconds
-                while (1) {
-                    printf("proceeding\n");
-                    sleep(2);
-                }
-            }
-        }
+
+    pid_t child2 = fork();
+    if (child2 == 0) {
+        child_process2();
     }
-    
-    return 0;
+
+    total_children = 2; // Expecting two children
+
+    // Create the daemon process after forking children
+    pid_t daemon_pid = fork();
+    if (daemon_pid == 0) {
+        if (become_daemon() == -1) {
+            perror("Failed to create daemon");
+            exit(EXIT_FAILURE);
+        }
+        while (1) sleep(5);  // Daemon's loop
+    }
+
+    // Main process proceeds normally
+    printf("Main process PID: %d, entering main loop\n", getpid());
+
+    while (1) {
+        printf("proceeding\n");
+        sleep(2);
+    }
 }
