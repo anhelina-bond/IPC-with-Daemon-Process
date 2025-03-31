@@ -9,10 +9,11 @@
 #include <time.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
-#define FIFO1 "/tmp/fifo1"
-#define FIFO2 "/tmp/fifo2"
-#define LOG_FILE "/tmp/daemon_log.txt"
+#define FIFO1 "fifo1"
+#define FIFO2 "fifo2"
+#define LOG_FILE "daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
 volatile sig_atomic_t total_children = 0;

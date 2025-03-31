@@ -1,6 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11
 SRC = main.c
+TARGET = daemon
 
 all: clean compile
 
