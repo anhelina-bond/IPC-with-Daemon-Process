@@ -11,9 +11,9 @@
 #include <errno.h>
 #include <signal.h>
 
-#define FIFO1 "fifo1"
-#define FIFO2 "fifo2"
-#define LOG_FILE "daemon_log.txt"
+#define FIFO1 "/tmp/fifo1"
+#define FIFO2 "/tmp/fifo2"
+#define LOG_FILE "/tmp/daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
 volatile sig_atomic_t total_children = 0;
@@ -131,71 +131,134 @@ void become_daemon() {
     printf("[%s] Daemon started with PID %d\n", ctime(&now), daemon_pid);
 }
 
-// Child process 1: Reads numbers and determines the larger one
+// // Child process 1: Reads numbers and determines the larger one
+// void child_process1() {
+//     // Open FIFO1 for reading
+//     int fd1 = open(FIFO1, O_RDONLY);
+//     if (fd1 < 0) {
+//         perror("child1: open FIFO1");
+//         exit(EXIT_FAILURE);
+//     }
+    
+//     // Read the two integers
+//     int nums[2];
+//     if (read(fd1, nums, sizeof(nums)) != sizeof(nums)) {
+//         perror("child1: read from FIFO1");
+//         close(fd1);
+//         exit(EXIT_FAILURE);
+//     }
+//     close(fd1);
+    
+//     sleep(10); // Sleep for 10 seconds as required
+    
+//     // Determine the larger number
+//     int larger = (nums[0] > nums[1]) ? nums[0] : nums[1];
+    
+//     // Open FIFO2 for writing
+//     int fd2 = open(FIFO2, O_WRONLY);
+//     if (fd2 < 0) {
+//         perror("child1: open FIFO2");
+//         exit(EXIT_FAILURE);
+//     }
+    
+//     // Write the larger number to FIFO2
+//     if (write(fd2, &larger, sizeof(larger)) < 0) {
+//         perror("child1: write to FIFO2");
+//         close(fd2);
+//         exit(EXIT_FAILURE);
+//     }
+//     close(fd2);
+    
+//     exit(EXIT_SUCCESS);
+// }
+
+// // Child process 2: Reads the command and prints the larger number
+// void child_process2() {
+//     // Open FIFO2 for reading
+//     int fd = open(FIFO2, O_RDONLY);
+//     if (fd < 0) {
+//         perror("child2: open FIFO2");
+//         exit(EXIT_FAILURE);
+//     }
+    
+//     sleep(10); // Sleep for 10 seconds as required
+    
+//     // Read the larger number
+//     int larger;
+//     if (read(fd, &larger, sizeof(larger)) < 0) {
+//         perror("child2: read from FIFO2");
+//         close(fd);
+//         exit(EXIT_FAILURE);
+//     }
+//     close(fd);
+    
+//     printf("The larger number is: %d\n", larger);
+    
+//     exit(EXIT_SUCCESS);
+// }
 void child_process1() {
-    // Open FIFO1 for reading
+    printf("Child 1 started\n");
+
     int fd1 = open(FIFO1, O_RDONLY);
-    if (fd1 < 0) {
-        perror("child1: open FIFO1");
+    if (fd1 == -1) {
+        perror("Error opening FIFO1 in Child 1");
         exit(EXIT_FAILURE);
     }
-    
-    // Read the two integers
+
     int nums[2];
-    if (read(fd1, nums, sizeof(nums)) != sizeof(nums)) {
-        perror("child1: read from FIFO1");
-        close(fd1);
+    ssize_t bytes_read = read(fd1, nums, sizeof(nums));
+    if (bytes_read == -1) {
+        perror("Error reading from FIFO1");
         exit(EXIT_FAILURE);
     }
     close(fd1);
-    
-    sleep(10); // Sleep for 10 seconds as required
-    
-    // Determine the larger number
+
     int larger = (nums[0] > nums[1]) ? nums[0] : nums[1];
-    
-    // Open FIFO2 for writing
+
+    printf("Child 1: Comparing %d and %d, larger is %d\n", nums[0], nums[1], larger);
+
     int fd2 = open(FIFO2, O_WRONLY);
-    if (fd2 < 0) {
-        perror("child1: open FIFO2");
+    if (fd2 == -1) {
+        perror("Error opening FIFO2 in Child 1");
         exit(EXIT_FAILURE);
     }
-    
-    // Write the larger number to FIFO2
-    if (write(fd2, &larger, sizeof(larger)) < 0) {
-        perror("child1: write to FIFO2");
-        close(fd2);
+
+    ssize_t bytes_written = write(fd2, &larger, sizeof(larger));
+    if (bytes_written == -1) {
+        perror("Error writing to FIFO2");
         exit(EXIT_FAILURE);
     }
     close(fd2);
-    
+
     exit(EXIT_SUCCESS);
 }
 
-// Child process 2: Reads the command and prints the larger number
+
 void child_process2() {
-    // Open FIFO2 for reading
+    printf("Child 2 started\n");
+    
     int fd = open(FIFO2, O_RDONLY);
-    if (fd < 0) {
-        perror("child2: open FIFO2");
+    if (fd == -1) {
+        perror("Error opening FIFO2 in Child 2");
         exit(EXIT_FAILURE);
     }
+
+    sleep(10); // Simulated delay
     
-    sleep(10); // Sleep for 10 seconds as required
-    
-    // Read the larger number
     int larger;
-    if (read(fd, &larger, sizeof(larger)) < 0) {
-        perror("child2: read from FIFO2");
-        close(fd);
+    ssize_t bytes_read = read(fd, &larger, sizeof(larger));
+    if (bytes_read == -1) {
+        perror("Error reading from FIFO2");
         exit(EXIT_FAILURE);
     }
-    close(fd);
     
+    close(fd);
+
     printf("The larger number is: %d\n", larger);
     
     exit(EXIT_SUCCESS);
 }
+
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
