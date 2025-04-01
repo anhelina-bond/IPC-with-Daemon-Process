@@ -122,82 +122,17 @@ int become_daemon() {
     }
 
     // Redirect standard file descriptors to /dev/null
-    fd = open("/dev/null", O_RDWR);
-    if (fd != -1) {
-        dup2(fd, STDIN_FILENO);
-        dup2(fd, STDOUT_FILENO);
-        dup2(fd, STDERR_FILENO);
-        if (fd > 2) close(fd);
+    int log_fd = open(LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    if (log_fd != -1) {
+        dup2(log_fd, STDOUT_FILENO);
+        dup2(log_fd, STDERR_FILENO);
+        if (log_fd > 2) close(log_fd);
     }
 
     return 0;
 }
 
-// // Child process 1: Reads numbers and determines the larger one
-// void child_process1() {
-//     // Open FIFO1 for reading
-//     int fd1 = open(FIFO1, O_RDONLY);
-//     if (fd1 < 0) {
-//         perror("child1: open FIFO1");
-//         exit(EXIT_FAILURE);
-//     }
-    
-//     // Read the two integers
-//     int nums[2];
-//     if (read(fd1, nums, sizeof(nums)) != sizeof(nums)) {
-//         perror("child1: read from FIFO1");
-//         close(fd1);
-//         exit(EXIT_FAILURE);
-//     }
-//     close(fd1);
-    
-//     sleep(10); // Sleep for 10 seconds as required
-    
-//     // Determine the larger number
-//     int larger = (nums[0] > nums[1]) ? nums[0] : nums[1];
-    
-//     // Open FIFO2 for writing
-//     int fd2 = open(FIFO2, O_WRONLY);
-//     if (fd2 < 0) {
-//         perror("child1: open FIFO2");
-//         exit(EXIT_FAILURE);
-//     }
-    
-//     // Write the larger number to FIFO2
-//     if (write(fd2, &larger, sizeof(larger)) < 0) {
-//         perror("child1: write to FIFO2");
-//         close(fd2);
-//         exit(EXIT_FAILURE);
-//     }
-//     close(fd2);
-    
-//     exit(EXIT_SUCCESS);
-// }
-
-// // Child process 2: Reads the command and prints the larger number
-// void child_process2() {
-//     // Open FIFO2 for reading
-//     int fd = open(FIFO2, O_RDONLY);
-//     if (fd < 0) {
-//         perror("child2: open FIFO2");
-//         exit(EXIT_FAILURE);
-//     }
-    
-//     sleep(10); // Sleep for 10 seconds as required
-    
-//     // Read the larger number
-//     int larger;
-//     if (read(fd, &larger, sizeof(larger)) < 0) {
-//         perror("child2: read from FIFO2");
-//         close(fd);
-//         exit(EXIT_FAILURE);
-//     }
-//     close(fd);
-    
-//     printf("The larger number is: %d\n", larger);
-    
-//     exit(EXIT_SUCCESS);
-// }
+// Child process 1: Reads numbers and determines the larger one
 void child_process1() {
     printf("Child 1 started\n");
 
@@ -235,7 +170,7 @@ void child_process1() {
     exit(EXIT_SUCCESS);
 }
 
-
+// Child process 2: Reads the command and prints the larger number
 void child_process2() {
     printf("Child 2 started\n");
     
@@ -259,6 +194,15 @@ void child_process2() {
     printf("The larger number is: %d\n", larger);
     
     exit(EXIT_SUCCESS);
+}
+void log_message(const char *message) {
+    FILE *log = fopen(LOG_FILE, "a");
+    if (log) {
+        time_t now;
+        time(&now);
+        fprintf(log, "[%s] %s\n", ctime(&now), message);
+        fclose(log);
+    }
 }
 
 
@@ -325,12 +269,16 @@ int main(int argc, char *argv[]) {
     // Create the daemon process after forking children
     pid_t daemon_pid = fork();
     if (daemon_pid == 0) {
-        if (become_daemon() == -1) {
-            perror("Failed to create daemon");
-            exit(EXIT_FAILURE);
-        }
-        while (1) sleep(5);  // Daemon's loop
+    if (become_daemon() == -1) {
+        perror("Failed to create daemon");
+        exit(EXIT_FAILURE);
     }
+    log_message("Daemon started.");
+    while (1) {
+        sleep(5);
+        log_message("Daemon is alive.");
+    }
+}
 
     // Main process proceeds normally
     printf("Main process PID: %d, entering main loop\n", getpid());
