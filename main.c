@@ -18,39 +18,38 @@
 #define LOG_FILE "/tmp/daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
-volatile sig_atomic_t total_children = 0;
+int total_children = 0;
 pid_t daemon_pid = 0;
 
 // Signal handler for SIGCHLD
 void sigchld_handler(int sig) {
+    (void)sig; 
     int status;
     pid_t pid;
     
+    FILE *log = fopen(LOG_FILE, "a"); // Open log file once
+
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        if (pid == -1) {
-            perror("waitpid");
-            return;
-        }
-        
-        child_count += 2; // Increment by 2 as per requirements
-        
         // Log the exit status
-        FILE *log = fopen(LOG_FILE, "a");
         if (log) {
             time_t now;
             time(&now);
             fprintf(log, "[%s] Child PID %d exited with status %d\n", 
                     ctime(&now), pid, WEXITSTATUS(status));
-            fclose(log);
         }
         
         printf("Child PID %d exited with status %d\n", pid, WEXITSTATUS(status));
-        
-        if (child_count > total_children) {
+
+        child_count++; // Corrected increment
+
+        if (child_count >= total_children) {
             printf("All children have exited. Parent terminating.\n");
+            if (log) fclose(log);
             exit(EXIT_SUCCESS);
         }
     }
+
+    if (log) fclose(log); // Close log file outside the loop
 }
 
 // Signal handler for daemon process
@@ -321,7 +320,7 @@ int main(int argc, char *argv[]) {
     // Main process proceeds normally
     printf("Main process PID: %d, entering main loop\n", getpid());
 
-    while (1) {
+    while (child_count <= total_children) {
         printf("proceeding\n");
         sleep(2);
     }
