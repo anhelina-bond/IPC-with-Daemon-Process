@@ -127,15 +127,14 @@ int become_daemon() {
 
     // Redirect standard file descriptors to /dev/null
     fd = open(LOG_FILE, O_RDWR);
-    if (fd == -1) {
-        perror("Failed to open log file");
-        exit(EXIT_FAILURE);
-    }
     if (fd != -1) {
         dup2(fd, STDIN_FILENO);
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
         if (fd > 2) close(fd);
+    } else {
+        perror("Failed to open log file");
+        exit(EXIT_FAILURE);
     }
 
     return 0;
@@ -220,11 +219,15 @@ int main(int argc, char *argv[]) {
     if (mkfifo(FIFO1, 0666) < 0 && errno != EEXIST) {
         perror("mkfifo FIFO1");
         exit(EXIT_FAILURE);
+    } else {
+        printf("fifo1\n");
     }
     if (mkfifo(FIFO2, 0666) < 0 && errno != EEXIST) {
         perror("mkfifo FIFO2");
         unlink(FIFO1);
         exit(EXIT_FAILURE);
+    }else {
+        printf("fifo2\n");
     }
 
 
