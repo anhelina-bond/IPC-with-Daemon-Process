@@ -114,7 +114,7 @@ int become_daemon() {
     }
 
     // Redirect standard file descriptors to /dev/null
-    fd = open(LOG_FILE, O_RDWR);
+    fd = open(LOG_FILE,  O_RDWR | O_CREAT | O_APPEND,);
     if (fd != -1) {
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
