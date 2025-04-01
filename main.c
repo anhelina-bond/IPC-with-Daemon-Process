@@ -221,7 +221,7 @@ int main(int argc, char *argv[]) {
 
     int fd1 = open(FIFO1, O_WRONLY);
 
-    if (fd!=-1) {
+    if (fd1!=-1) {
         int num[2] = {num1, num2};
         write(fd1, num, sizeof(num));
         close(fd1);
