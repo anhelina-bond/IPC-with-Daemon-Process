@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -154,23 +156,7 @@ int main(int argc, char *argv[]) {
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
     sigaction(SIGCHLD, &sa, NULL);
 
-    pid_t child1 = fork();
-    if (child1 == -1) {
-        perror("fork failed for child1");
-        exit(EXIT_FAILURE);
-    } else if (child1 == 0) {
-        child_process1();
-    }
-
-    pid_t child2 = fork();
-    if (child2 == -1) {
-        perror("fork failed for child2");
-        exit(EXIT_FAILURE);
-    } else if (child2 == 0) {
-        child_process2();
-    }
-
-    int fd1 = open(FIFO1, O_WRONLY);
+     int fd1 = open(FIFO1, O_WRONLY);
     if (fd1 == -1) {
         perror("Parent: Error opening FIFO1");
         exit(EXIT_FAILURE);
@@ -187,6 +173,23 @@ int main(int argc, char *argv[]) {
     char command[] = "determine_larger";
     write(fd2, command, strlen(command) + 1);
     close(fd2);
+
+    pid_t child1 = fork();
+    if (child1 == -1) {
+        perror("fork failed for child1");
+        exit(EXIT_FAILURE);
+    } else if (child1 == 0) {
+        child_process1();
+    }
+
+    pid_t child2 = fork();
+    if (child2 == -1) {
+        perror("fork failed for child2");
+        exit(EXIT_FAILURE);
+    } else if (child2 == 0) {
+        child_process2();
+    }
+
 
     pid_t daemon_pid = fork();
     if (daemon_pid == 0) {
