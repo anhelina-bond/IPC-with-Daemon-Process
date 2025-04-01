@@ -18,38 +18,26 @@
 #define LOG_FILE "daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
-int total_children = 2;
+volatile sig_atomic_t total_children = 2;
 pid_t daemon_pid = 0;
 
 // Signal handler for SIGCHLD
-void sigchld_handler(int sig) {
-    (void)sig; 
+void sigchld_handler(int sig) { 
+    (void)sig;
     int status;
     pid_t pid;
-    
-    FILE *log = fopen(LOG_FILE, "a"); // Open log file once
 
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        // Log the exit status
-        if (log) {
-            time_t now;
-            time(&now);
-            fprintf(log, "[%s] Child PID %d exited with status %d\n", 
-                    ctime(&now), pid, WEXITSTATUS(status));
-        }
-        
-        printf("Child PID %d exited with status %d\n", pid, WEXITSTATUS(status));
+        // Log exit status safely
+        char buf[100];
+        int len = snprintf(buf, sizeof(buf), "Child PID %d exited with status %d\n", 
+                           pid, WEXITSTATUS(status));
+        write(STDOUT_FILENO, buf, len); // Async-safe logging
 
-        child_count++; // Corrected increment
+        child_count++;
 
-        if (child_count >= total_children) {
-            printf("All children have exited. Parent terminating.\n");
-            if (log) fclose(log);
-            exit(EXIT_SUCCESS);
-        }
+
     }
-
-    if (log) fclose(log); // Close log file outside the loop
 }
 
 // Signal handler for daemon process
@@ -128,10 +116,9 @@ int become_daemon() {
     // Redirect standard file descriptors to /dev/null
     fd = open(LOG_FILE, O_RDWR);
     if (fd != -1) {
-        dup2(fd, STDIN_FILENO);
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
-        if (fd > 2) close(fd);
+        // if (fd > 2) close(fd);
     } else {
         perror("Failed to open log file");
         exit(EXIT_FAILURE);
@@ -253,14 +240,22 @@ int main(int argc, char *argv[]) {
 
     // Create two child processes
     pid_t child1 = fork();
-    if (child1 == 0) {
+    if (child1 == -1) {
+        perror("fork failed for child1");
+        exit(EXIT_FAILURE);
+    } else if (child1 == 0) {
         child_process1();
     }
 
     pid_t child2 = fork();
-    if (child2 == 0) {
+    if (child2 == -1) {
+        perror("fork failed for child2");
+        exit(EXIT_FAILURE);
+    } else if (child2 == 0) {
         child_process2();
     }
+    printf("Parent process started. Child1 PID: %d, Child2 PID: %d\n", child1, child2);
+    fflush(stdout);
 
 
     // Create the daemon process after forking children
@@ -273,9 +268,6 @@ int main(int argc, char *argv[]) {
         while (1) sleep(5);  // Daemon's loop
     }
 
-    
-
-
     // Main process proceeds normally
     printf("Main process PID: %d, entering main loop\n", getpid());
 
@@ -283,4 +275,7 @@ int main(int argc, char *argv[]) {
         printf("proceeding\n");
         sleep(2);
     }
+
+    write(STDOUT_FILENO, "All children have exited. Parent terminating.\n", 47);
+    exit(EXIT_SUCCESS);
 }
