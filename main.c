@@ -94,7 +94,7 @@ int become_daemon() {
     }
 
     // Set file permissions (optional, for security)
-    umask(0);
+    // umask(0);
 
     // Change working directory to root
     // if (chdir("/") == -1) {
