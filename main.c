@@ -18,7 +18,7 @@
 #define LOG_FILE "/tmp/daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
-int total_children = 0;
+int total_children = 2;
 pid_t daemon_pid = 0;
 
 // Signal handler for SIGCHLD
@@ -282,6 +282,22 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Write numbers to FIFO1 before creating children
+    int fd1 = open(FIFO1, O_WRONLY);
+    if (fd1 == -1) {
+        perror("Error opening FIFO1 for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    int nums[2] = {num1, num2};
+    ssize_t bytes_written = write(fd1, nums, sizeof(nums));
+    if (bytes_written == -1) {
+        perror("Error writing to FIFO1");
+        close(fd1);
+        exit(EXIT_FAILURE);
+    }
+    close(fd1);
+
     // Set up SIGCHLD handler
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
@@ -305,7 +321,6 @@ int main(int argc, char *argv[]) {
         child_process2();
     }
 
-    total_children = 2; // Expecting two children
 
     // Create the daemon process after forking children
     pid_t daemon_pid = fork();
@@ -320,7 +335,7 @@ int main(int argc, char *argv[]) {
     // Main process proceeds normally
     printf("Main process PID: %d, entering main loop\n", getpid());
 
-    while (child_count <= total_children) {
+    while (child_count < total_children) {
         printf("proceeding\n");
         sleep(2);
     }
