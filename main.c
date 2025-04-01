@@ -97,10 +97,10 @@ int become_daemon() {
     umask(0);
 
     // Change working directory to root
-    if (chdir("/") == -1) {
-        perror("chdir failed");
-        return -1;
-    }
+    // if (chdir("/") == -1) {
+    //     perror("chdir failed");
+    //     return -1;
+    // }
 
     int fifo1_fd = open(FIFO1, O_RDWR);
     int fifo2_fd = open(FIFO2, O_RDWR);
@@ -114,7 +114,7 @@ int become_daemon() {
     }
 
     // Redirect standard file descriptors to /dev/null
-    fd = open(LOG_FILE,  O_RDWR | O_CREAT | O_APPEND,);
+    fd = open(LOG_FILE,  O_RDWR | O_CREAT | O_APPEND);
     if (fd != -1) {
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
