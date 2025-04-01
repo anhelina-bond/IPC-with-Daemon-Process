@@ -18,7 +18,7 @@
 #define LOG_FILE "daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
-volatile sig_atomic_t total_children = 2;
+volatile sig_atomic_t total_children = 0;
 pid_t daemon_pid = 0;
 
 // Signal handler for SIGCHLD
@@ -271,8 +271,15 @@ int main(int argc, char *argv[]) {
             perror("Failed to create daemon");
             exit(EXIT_FAILURE);
         }
-        while (1) sleep(5);  // Daemon's loop
+        while (1) {
+            time_t now;
+            time(&now);
+            printf("[%s] Daemon is running\n", ctime(&now));
+            fflush(stdout);  // Ensure immediate writing
+            sleep(5);
+        }
     }
+    total_children = 2;
 
     // Main process proceeds normally
     printf("Main process PID: %d, entering main loop\n", getpid());
