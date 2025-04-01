@@ -27,7 +27,7 @@ void sigchld_handler(int sig) {
     int status;
     pid_t pid;
 
-    while ((pid = waitpid(-1, &status, 0)) > 0) {
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         // Log exit status safely
         char buf[100];
         int len = snprintf(buf, sizeof(buf), "Child PID %d exited with status %d\n", 
@@ -227,13 +227,14 @@ int main(int argc, char *argv[]) {
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP | SA_NOCLDWAIT; // Ensure handler runs for each child
     if (sigaction(SIGCHLD, &sa, NULL) < 0) {
         perror("sigaction");
         unlink(FIFO1);
         unlink(FIFO2);
         exit(EXIT_FAILURE);
     }
+
 
     printf("sigchild assigned\n");
 
