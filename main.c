@@ -127,6 +127,10 @@ int become_daemon() {
 
     // Redirect standard file descriptors to /dev/null
     fd = open(LOG_FILE, O_RDWR);
+    if (fd == -1) {
+        perror("Failed to open log file");
+        exit(EXIT_FAILURE);
+    }
     if (fd != -1) {
         dup2(fd, STDIN_FILENO);
         dup2(fd, STDOUT_FILENO);
@@ -197,6 +201,7 @@ void child_process2() {
     close(fd);
 
     printf("The larger number is: %d\n", larger);
+    fflush(stdout);
     
     exit(EXIT_SUCCESS);
 }
