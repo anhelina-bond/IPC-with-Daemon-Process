@@ -9,4 +9,4 @@ compile: $(SRC)
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
 
 clean:
-	rm -f $(TARGET) /tmp/fifo1 /tmp/fifo2 /tmp/daemon_log.txt
+	rm -f $(TARGET) fifo1 fifo2 daemon_log.txt

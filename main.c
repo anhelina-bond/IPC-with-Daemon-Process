@@ -13,9 +13,9 @@
 #include <errno.h>
 #include <signal.h>
 
-#define FIFO1 "/tmp/fifo1"
-#define FIFO2 "/tmp/fifo2"
-#define LOG_FILE "/tmp/daemon_log.txt"
+#define FIFO1 "fifo1"
+#define FIFO2 "fifo2"
+#define LOG_FILE "daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
 int total_children = 2;
@@ -133,71 +133,7 @@ int become_daemon() {
     return 0;
 }
 
-// // Child process 1: Reads numbers and determines the larger one
-// void child_process1() {
-//     // Open FIFO1 for reading
-//     int fd1 = open(FIFO1, O_RDONLY);
-//     if (fd1 < 0) {
-//         perror("child1: open FIFO1");
-//         exit(EXIT_FAILURE);
-//     }
-    
-//     // Read the two integers
-//     int nums[2];
-//     if (read(fd1, nums, sizeof(nums)) != sizeof(nums)) {
-//         perror("child1: read from FIFO1");
-//         close(fd1);
-//         exit(EXIT_FAILURE);
-//     }
-//     close(fd1);
-    
-//     sleep(10); // Sleep for 10 seconds as required
-    
-//     // Determine the larger number
-//     int larger = (nums[0] > nums[1]) ? nums[0] : nums[1];
-    
-//     // Open FIFO2 for writing
-//     int fd2 = open(FIFO2, O_WRONLY);
-//     if (fd2 < 0) {
-//         perror("child1: open FIFO2");
-//         exit(EXIT_FAILURE);
-//     }
-    
-//     // Write the larger number to FIFO2
-//     if (write(fd2, &larger, sizeof(larger)) < 0) {
-//         perror("child1: write to FIFO2");
-//         close(fd2);
-//         exit(EXIT_FAILURE);
-//     }
-//     close(fd2);
-    
-//     exit(EXIT_SUCCESS);
-// }
 
-// // Child process 2: Reads the command and prints the larger number
-// void child_process2() {
-//     // Open FIFO2 for reading
-//     int fd = open(FIFO2, O_RDONLY);
-//     if (fd < 0) {
-//         perror("child2: open FIFO2");
-//         exit(EXIT_FAILURE);
-//     }
-    
-//     sleep(10); // Sleep for 10 seconds as required
-    
-//     // Read the larger number
-//     int larger;
-//     if (read(fd, &larger, sizeof(larger)) < 0) {
-//         perror("child2: read from FIFO2");
-//         close(fd);
-//         exit(EXIT_FAILURE);
-//     }
-//     close(fd);
-    
-//     printf("The larger number is: %d\n", larger);
-    
-//     exit(EXIT_SUCCESS);
-// }
 void child_process1() {
     printf("Child 1 started\n");
 
@@ -282,16 +218,13 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // Set up SIGCHLD handler
-    struct sigaction sa;
-    sa.sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-    if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-        perror("sigaction");
-        unlink(FIFO1);
-        unlink(FIFO2);
-        exit(EXIT_FAILURE);
+
+    int fd1 = open(FIFO1, O_WRONLY);
+
+    if (fd!=-1) {
+        int num[2] = {num1, num2};
+        write(fd1, num, sizeof(num));
+        close(fd1);
     }
 
     // Create two child processes
@@ -314,6 +247,19 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
         while (1) sleep(5);  // Daemon's loop
+    }
+
+    
+    // Set up SIGCHLD handler
+    struct sigaction sa;
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+        perror("sigaction");
+        unlink(FIFO1);
+        unlink(FIFO2);
+        exit(EXIT_FAILURE);
     }
 
     // Main process proceeds normally
