@@ -37,7 +37,7 @@ void sigchld_handler(int sig) {
     }
 }
 
-// Signal handler for SIGTERM and SIGHUP (Graceful Shutdown)
+// Signal handler for SIGTERM and SIGINT (Graceful Shutdown)
 void sigterm_handler(int sig) {
     (void)sig;
     shutdown_requested = 1;
@@ -45,11 +45,13 @@ void sigterm_handler(int sig) {
 
 // Convert the process into a daemon
 int become_daemon() {
-    if (fork() > 0) exit(EXIT_SUCCESS);  // Parent exits
+    pid_t pid = fork();
+    if (pid > 0) exit(EXIT_SUCCESS);  // Parent exits
 
     if (setsid() == -1) exit(EXIT_FAILURE); // Become session leader
 
-    if (fork() > 0) exit(EXIT_SUCCESS);  // Second fork to detach from terminal
+    pid = fork();
+    if (pid > 0) exit(EXIT_SUCCESS);  // Second fork to detach from terminal
 
     chdir("/");  // Change working directory to root (optional)
 
@@ -81,16 +83,17 @@ void log_message(const char *message) {
 void child_process1() {
     sleep(10);  // Sleep for 10 seconds before executing
 
-    int fd1 = open(FIFO1, O_RDONLY | O_NONBLOCK);
+    int fd1 = open(FIFO1, O_RDONLY);
     if (fd1 == -1) {
         perror("Error opening FIFO1 in Child 1");
         exit(EXIT_FAILURE);
     }
 
-    int nums[2], bytes_read;
-    while ((bytes_read = read(fd1, nums, sizeof(nums))) <= 0) {
-        if (shutdown_requested) exit(EXIT_SUCCESS);
-        sleep(1);
+    int nums[2];
+    if (read(fd1, nums, sizeof(nums)) <= 0) {
+        perror("Failed to read from FIFO1");
+        close(fd1);
+        exit(EXIT_FAILURE);
     }
     close(fd1);
 
@@ -112,16 +115,17 @@ void child_process1() {
 void child_process2() {
     sleep(10);  // Sleep for 10 seconds before executing
 
-    int fd2 = open(FIFO2, O_RDONLY | O_NONBLOCK);
+    int fd2 = open(FIFO2, O_RDONLY);
     if (fd2 == -1) {
         perror("Error opening FIFO2 in Child 2");
         exit(EXIT_FAILURE);
     }
 
-    int larger, bytes_read;
-    while ((bytes_read = read(fd2, &larger, sizeof(larger))) <= 0) {
-        if (shutdown_requested) exit(EXIT_SUCCESS);
-        sleep(1);
+    int larger;
+    if (read(fd2, &larger, sizeof(larger)) <= 0) {
+        perror("Failed to read from FIFO2");
+        close(fd2);
+        exit(EXIT_FAILURE);
     }
     close(fd2);
 
@@ -139,13 +143,13 @@ void daemon_process() {
 
     log_message("Daemon started.");
 
-    // Set up SIGTERM and SIGHUP handlers
+    // Set up SIGTERM, SIGINT handlers
     struct sigaction sa;
     sa.sa_handler = sigterm_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
     sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGHUP, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
 
     time_t last_active = time(NULL);
 
@@ -186,12 +190,7 @@ int main() {
     sa.sa_handler = sigchld_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-    if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-        perror("sigaction");
-        unlink(FIFO1);
-        unlink(FIFO2);
-        exit(EXIT_FAILURE);
-    }
+    sigaction(SIGCHLD, &sa, NULL);
 
     // Fork child processes
     pid_t child1 = fork();
