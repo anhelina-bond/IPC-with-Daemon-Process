@@ -121,8 +121,6 @@ int become_daemon() {
 
 
 void child_process1() {
-    sleep(10); // Simulated delay
-
     printf("Child 1 started\n");
 
     int fd1 = open(FIFO1, O_RDONLY);
@@ -142,7 +140,8 @@ void child_process1() {
     int larger = (nums[0] > nums[1]) ? nums[0] : nums[1];
 
     printf("Child 1: Comparing %d and %d, larger is %d\n", nums[0], nums[1], larger);
-
+    fflush(stdout);
+    
     int fd2 = open(FIFO2, O_WRONLY);
     if (fd2 == -1) {
         perror("Error opening FIFO2 in Child 1");
