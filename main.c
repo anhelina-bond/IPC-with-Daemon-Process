@@ -27,7 +27,7 @@ void sigchld_handler(int sig) {
     int status;
     pid_t pid;
 
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    while ((pid = waitpid(-1, &status, 0)) > 0) {
         // Log exit status safely
         char buf[100];
         int len = snprintf(buf, sizeof(buf), "Child PID %d exited with status %d\n", 
@@ -35,7 +35,7 @@ void sigchld_handler(int sig) {
         write(STDOUT_FILENO, buf, len); // Async-safe logging
 
         child_count++;
-
+        printf("Child count: %d", child_count);
 
     }
 }
@@ -223,32 +223,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // Create the daemon process after forking children
-    pid_t daemon_pid = fork();
-    if (daemon_pid == 0) {
-        if (become_daemon() == -1) {
-            perror("Failed to create daemon");
-            exit(EXIT_FAILURE);
-        }
-
-        // Register signal
-        struct sigaction sa;
-        sa.sa_handler = daemon_signal_handler;
-        sigemptyset(&sa.sa_mask);
-        sa.sa_flags = SA_RESTART;
-        sigaction(SIGUSR1, &sa, NULL);
-        sigaction(SIGHUP, &sa, NULL);
-        sigaction(SIGTERM, &sa, NULL);
-
-        while (1) {
-            time_t now;
-            time(&now);
-            printf("[%s] Daemon is running\n", ctime(&now));
-            fflush(stdout);  // Ensure immediate writing
-            sleep(5);
-        }
-    }
-
     // Set up SIGCHLD handler
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
@@ -283,7 +257,27 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
 
 
-    
+    // Create the daemon process after forking children
+    pid_t daemon_pid = fork();
+    if (daemon_pid == 0) {
+        if (become_daemon() == -1) {
+            perror("Failed to create daemon");
+            exit(EXIT_FAILURE);
+        }
+
+        // Register signal
+        struct sigaction sa;
+        sa.sa_handler = daemon_signal_handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESTART;
+        sigaction(SIGUSR1, &sa, NULL);
+        sigaction(SIGHUP, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+
+        while (1) {
+            sleep(5);
+        }
+    }
     total_children = 2;
 
     // Main process proceeds normally
