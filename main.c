@@ -266,17 +266,7 @@ int main(int argc, char *argv[]) {
     }
 
     
-    // Set up SIGCHLD handler
-    struct sigaction sa;
-    sa.sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-    if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-        perror("sigaction");
-        unlink(FIFO1);
-        unlink(FIFO2);
-        exit(EXIT_FAILURE);
-    }
+
 
     // Main process proceeds normally
     printf("Main process PID: %d, entering main loop\n", getpid());
