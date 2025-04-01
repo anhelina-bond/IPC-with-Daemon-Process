@@ -114,15 +114,19 @@ int become_daemon() {
         return -1;
     }
 
-    // Close all open file descriptors
+    int fifo1_fd = open(FIFO1, O_RDWR);
+    int fifo2_fd = open(FIFO2, O_RDWR);
+
     maxfd = sysconf(_SC_OPEN_MAX);
-    if (maxfd == -1) maxfd = 1024;  // If sysconf fails, use 1024 as default
+    if (maxfd == -1) maxfd = 1024;
     for (fd = 0; fd < maxfd; fd++) {
-        close(fd);
+        if (fd != fifo1_fd && fd != fifo2_fd) { // Keep FIFOs open
+            close(fd);
+        }
     }
 
     // Redirect standard file descriptors to /dev/null
-    fd = open("/dev/null", O_RDWR);
+    fd = open(LOG_FILE, O_RDWR);
     if (fd != -1) {
         dup2(fd, STDIN_FILENO);
         dup2(fd, STDOUT_FILENO);
@@ -225,6 +229,18 @@ int main(int argc, char *argv[]) {
         int num[2] = {num1, num2};
         write(fd1, num, sizeof(num));
         close(fd1);
+    }
+
+    // Set up SIGCHLD handler
+    struct sigaction sa;
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+        perror("sigaction");
+        unlink(FIFO1);
+        unlink(FIFO2);
+        exit(EXIT_FAILURE);
     }
 
     // Create two child processes
