@@ -114,7 +114,7 @@ int become_daemon() {
     }
 
     // Redirect standard file descriptors to /dev/null
-    fd = open(LOG_FILE,  O_RDWR | O_CREAT | O_APPEND);
+    fd = open(LOG_FILE,  O_WRONLY | O_CREAT | O_APPEND);
     if (fd != -1) {
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
@@ -217,13 +217,15 @@ int main(int argc, char *argv[]) {
         printf("fifo2\n");
     }
 
-
-    int fd1 = open(FIFO1, O_WRONLY);
+    int fd1 = open(FIFO1, O_WRONLY | O_NONBLOCK);
 
     if (fd1!=-1) {
         int num[2] = {num1, num2};
         write(fd1, num, sizeof(num));
         close(fd1);
+    } else{
+        perror("Error opening FIFO1 in write mode");
+        exit(EXIT_FAILURE);
     }
 
     // Set up SIGCHLD handler
@@ -237,6 +239,8 @@ int main(int argc, char *argv[]) {
         unlink(FIFO2);
         exit(EXIT_FAILURE);
     }
+
+    printf("sigchild assigned\n");
 
     // Create two child processes
     pid_t child1 = fork();
