@@ -93,14 +93,6 @@ int become_daemon() {
         default: _exit(EXIT_SUCCESS);  // Parent exits
     }
 
-    // Set file permissions (optional, for security)
-    // umask(0);
-
-    // Change working directory to root
-    // if (chdir("/") == -1) {
-    //     perror("chdir failed");
-    //     return -1;
-    // }
 
     int fifo1_fd = open(FIFO1, O_RDWR);
     int fifo2_fd = open(FIFO2, O_RDWR);
@@ -231,6 +223,32 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Create the daemon process after forking children
+    pid_t daemon_pid = fork();
+    if (daemon_pid == 0) {
+        if (become_daemon() == -1) {
+            perror("Failed to create daemon");
+            exit(EXIT_FAILURE);
+        }
+
+        // Register signal
+        struct sigaction sa;
+        sa.sa_handler = daemon_signal_handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESTART;
+        sigaction(SIGUSR1, &sa, NULL);
+        sigaction(SIGHUP, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+
+        while (1) {
+            time_t now;
+            time(&now);
+            printf("[%s] Daemon is running\n", ctime(&now));
+            fflush(stdout);  // Ensure immediate writing
+            sleep(5);
+        }
+    }
+
     // Set up SIGCHLD handler
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
@@ -265,31 +283,7 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
 
 
-    // Create the daemon process after forking children
-    pid_t daemon_pid = fork();
-    if (daemon_pid == 0) {
-        if (become_daemon() == -1) {
-            perror("Failed to create daemon");
-            exit(EXIT_FAILURE);
-        }
-
-        // REGISTER SIGNAL HANDLER HERE 👇
-        struct sigaction sa;
-        sa.sa_handler = daemon_signal_handler;
-        sigemptyset(&sa.sa_mask);
-        sa.sa_flags = SA_RESTART;
-        sigaction(SIGUSR1, &sa, NULL);
-        sigaction(SIGHUP, &sa, NULL);
-        sigaction(SIGTERM, &sa, NULL);
-        
-        while (1) {
-            time_t now;
-            time(&now);
-            printf("[%s] Daemon is running\n", ctime(&now));
-            fflush(stdout);  // Ensure immediate writing
-            sleep(5);
-        }
-    }
+    
     total_children = 2;
 
     // Main process proceeds normally
