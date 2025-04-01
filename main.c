@@ -203,11 +203,13 @@ int main(int argc, char *argv[]) {
     int num2 = atoi(argv[2]);
 
     // Create FIFOs
-    if (mkfifo(FIFO1, 0666) < 0 && errno != EEXIST) {
-        perror("mkfifo FIFO1");
-        exit(EXIT_FAILURE);
+    if (mkfifo(FIFO1, 0666) == -1) {
+        if (errno != EEXIST) {
+            perror("mkfifo FIFO1");
+            exit(EXIT_FAILURE);
+        }
     } else {
-        printf("fifo1\n");
+        printf("fifo1 created successfully\n");
     }
     if (mkfifo(FIFO2, 0666) < 0 && errno != EEXIST) {
         perror("mkfifo FIFO2");
@@ -217,7 +219,7 @@ int main(int argc, char *argv[]) {
         printf("fifo2\n");
     }
 
-    int fd1 = open(FIFO1, O_WRONLY | O_NONBLOCK);
+    int fd1 = open(FIFO1, O_RDWR | O_NONBLOCK);
 
     if (fd1!=-1) {
         int num[2] = {num1, num2};
