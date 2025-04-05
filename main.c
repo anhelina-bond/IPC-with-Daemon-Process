@@ -38,14 +38,16 @@ pid_t daemon_pid = 0;
 int shmid = -1;
 
 // Signal handler for SIGCHLD
-void sigchld_handler(int sig) { 
+void sigchld_handler(int sig) {
     (void)sig;
     int status;
     pid_t pid;
-    shared_data *shared = shmat(shmid, NULL, 0);
+    char buf[100];
     
+    // Attach to shared memory
+    shared_data *shared = shmat(shmid, NULL, 0);
     if (shared == (void*)-1) {
-        write(STDERR_FILENO, "Failed to attach shared memory\n", 30);
+        write(STDERR_FILENO, "Failed to attach shared memory in SIGCHLD handler\n", 48);
         return;
     }
 
@@ -61,15 +63,37 @@ void sigchld_handler(int sig) {
             }
         }
         
-        char buf[100];
-        int len = snprintf(buf, sizeof(buf), "Child PID %d exited with status %d\n", 
-                         pid, WEXITSTATUS(status));
-        write(STDOUT_FILENO, buf, len);
+        // Enhanced exit status reporting
+        if (WIFEXITED(status)) {
+            snprintf(buf, sizeof(buf), 
+                    "Child %d exited normally with status %d\n",
+                    pid, WEXITSTATUS(status));
+        } 
+        else if (WIFSIGNALED(status)) {
+            snprintf(buf, sizeof(buf),
+                    "Child %d killed by signal %d (%s)\n",
+                    pid, WTERMSIG(status), strsignal(WTERMSIG(status)));
+        }
+        else if (WIFSTOPPED(status)) {
+            snprintf(buf, sizeof(buf),
+                    "Child %d stopped by signal %d\n",
+                    pid, WSTOPSIG(status));
+        }
+        write(STDOUT_FILENO, buf, strlen(buf));
+        
         child_count++;
     }
     
+    // Handle waitpid errors (except ECHILD which means no children)
+    if (pid == -1 && errno != ECHILD) {
+        snprintf(buf, sizeof(buf), "waitpid error: %s\n", strerror(errno));
+        write(STDERR_FILENO, buf, strlen(buf));
+    }
+    
+    // Detach from shared memory
     shmdt(shared);
 }
+
 
 // Signal handler for daemon process
 void daemon_signal_handler(int sig) {
@@ -232,6 +256,7 @@ void child_process1() {
 }
 
 void child_process2() {
+    sleep(10);
     printf("Child 2 started\n");    
     int fd = open(FIFO2, O_RDONLY);
     if (fd == -1) {
@@ -413,7 +438,7 @@ int main(int argc, char *argv[]) {
 
     // Main loop
     while (child_count < total_children) {
-        printf("Waiting for children to complete...\n");
+        printf("Proceeding...\n");
         sleep(2);
     }
 
