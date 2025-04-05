@@ -198,15 +198,16 @@ int become_daemon() {
     }
     
     // Open log file
-    int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND, 0644);
+    int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND | O_SYNC, 0644);
     if (log_fd == -1) {
         write(STDERR_FILENO, "Failed to open log file\n", 23);
-        return log_fd;
+        return -1;
     }
 
     // Redirect stdio
     dup2(log_fd, STDOUT_FILENO);
     dup2(log_fd, STDERR_FILENO);
+    close(log_fd);
 
     // Close all other descriptors
     int maxfd = sysconf(_SC_OPEN_MAX);
@@ -219,7 +220,7 @@ int become_daemon() {
         close(null_fd);
     }
 
-    return log_fd;
+    return 0;
 }
 
 void child_process1() {
@@ -303,13 +304,22 @@ int main(int argc, char *argv[]) {
     memset(shared, 0, sizeof(shared_data));
     shmdt(shared);
 
-    int log_fd;
+    int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND, 0644);
+    if (log_fd == -1) {
+        perror("Failed to open log file");
+        shmctl(shmid, IPC_RMID, NULL);
+        exit(EXIT_FAILURE);
+    }
+    
+    // Redirect stdout/stderr
+    dup2(log_fd, STDOUT_FILENO);
+    dup2(log_fd, STDERR_FILENO);
+    close(log_fd);
 
     // Create the daemon process
     daemon_pid = fork();
     if (daemon_pid == 0) {
-        log_fd = become_daemon();
-        if (log_fd == -1) {
+        if (become_daemon() == -1) {
             fprintf(stderr, "Failed to create daemon\n");
             shmctl(shmid, IPC_RMID, NULL);
             exit(EXIT_FAILURE);
@@ -329,10 +339,6 @@ int main(int argc, char *argv[]) {
             sleep(5);  // Check every 5 seconds
         }
     }
-    // Redirect stdout/stderr
-    dup2(log_fd, STDOUT_FILENO);
-    dup2(log_fd, STDERR_FILENO);
-    close(log_fd);
     
     int num1 = atoi(argv[1]);
     int num2 = atoi(argv[2]);
