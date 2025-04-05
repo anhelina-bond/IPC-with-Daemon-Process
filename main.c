@@ -36,6 +36,7 @@ void sigchld_handler(int sig) {
 
         child_count++;
         printf("Child count: %d", child_count);
+        fflush(stdout)
 
     }
 }
@@ -50,18 +51,21 @@ void daemon_signal_handler(int sig) {
         case SIGUSR1:
             if (log) {
                 fprintf(log, "[%s] Received SIGUSR1 signal\n", ctime(&now));
+                fflush(stdout)
                 fclose(log);
             }
             break;
         case SIGHUP:
             if (log) {
                 fprintf(log, "[%s] Received SIGHUP signal\n", ctime(&now));
+                fflush(stdout)
                 fclose(log);
             }
             break;
         case SIGTERM:
             if (log) {
                 fprintf(log, "[%s] Received SIGTERM signal. Daemon exiting.\n", ctime(&now));
+                fflush(stdout)
                 fclose(log);
             }
             exit(EXIT_SUCCESS);
@@ -118,6 +122,7 @@ int become_daemon() {
 
 void child_process1() {
     printf("Child 1 started\n");
+    fflush(stdout)
 
     int fd1 = open(FIFO1, O_RDONLY);
     if (fd1 == -1) {
@@ -159,6 +164,7 @@ void child_process2() {
     sleep(10); // Simulated delay
 
     printf("Child 2 started\n");    
+    fflush(stdout)
     int fd = open(FIFO2, O_RDONLY);
     if (fd == -1) {
         perror("Error opening FIFO2 in Child 2");
@@ -175,13 +181,12 @@ void child_process2() {
     close(fd);
 
     printf("The larger number is: %d\n", larger);
+    fflush(stdout)
     fflush(stdout);
     
     exit(EXIT_SUCCESS);
 }
 
-
-// ... [keep all the includes and defines] ...
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
@@ -242,6 +247,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     printf("SIGCHLD handler assigned\n");
+    fflush(stdout)
 
     // Create child processes first
     pid_t child1 = fork();
@@ -290,6 +296,7 @@ int main(int argc, char *argv[]) {
     total_children = 2;
 
     printf("Main process PID: %d, entering main loop\n", getpid());
+    fflush(stdout)
 
     while (child_count < total_children) {
         printf("proceeding...\n");
@@ -297,6 +304,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("All children have exited. Parent terminating.\n");
+    fflush(stdout)
     unlink(FIFO1);
     unlink(FIFO2);
     exit(EXIT_SUCCESS);
