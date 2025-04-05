@@ -22,6 +22,7 @@ volatile sig_atomic_t daemon_pid = 0;
 
 // Signal handler for SIGCHLD
 void sigchld_handler(int sig) {
+    (void)sig; // Explicitly mark as unused to avoid warning
     int status;
     pid_t pid;
     
@@ -134,6 +135,9 @@ void create_daemon() {
 
 // Child process 1: Reads numbers and determines larger one
 void child_process1() {
+    // Wait briefly to ensure FIFO is created
+    sleep(1);
+    
     int fd1 = open(FIFO1, O_RDONLY);
     if (fd1 < 0) {
         perror("Child1: Failed to open FIFO1");
@@ -170,6 +174,9 @@ void child_process1() {
 
 // Child process 2: Reads and prints the larger number
 void child_process2() {
+    // Wait briefly to ensure FIFO is created
+    sleep(1);
+    
     int fd2 = open(FIFO2, O_RDONLY);
     if (fd2 < 0) {
         perror("Child2: Failed to open FIFO2");
@@ -198,15 +205,19 @@ int main(int argc, char *argv[]) {
     
     int num1 = atoi(argv[1]);
     int num2 = atoi(argv[2]);
-    int result = 0; // As per requirements
+    (void)num1; // Use these variables to avoid unused warning
+    (void)num2;
     
     // Create FIFOs
-    if (mkfifo(FIFO1, 0666) < 0 && errno != EEXIST) {
+    unlink(FIFO1); // Remove if they already exist
+    unlink(FIFO2);
+    
+    if (mkfifo(FIFO1, 0666) < 0) {
         perror("Failed to create FIFO1");
         exit(EXIT_FAILURE);
     }
     
-    if (mkfifo(FIFO2, 0666) < 0 && errno != EEXIST) {
+    if (mkfifo(FIFO2, 0666) < 0) {
         perror("Failed to create FIFO2");
         unlink(FIFO1);
         exit(EXIT_FAILURE);
