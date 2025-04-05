@@ -257,10 +257,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     close(fd1);
-    
-    // Create daemon process
-    create_daemon();    
-    
+       
     
     // Create child processes
     pid_t pid1 = fork();
@@ -286,6 +283,9 @@ int main(int argc, char *argv[]) {
     if (pid2 == 0) {
         child_process2();
     }
+
+    // Create daemon process
+    create_daemon();   
     
     total_children = 2;
     
