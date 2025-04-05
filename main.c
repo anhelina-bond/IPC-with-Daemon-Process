@@ -198,7 +198,7 @@ int become_daemon() {
     }
     
     // Open log file
-    int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND | O_SYNC, 0644);
+    int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND , 0644);
     if (log_fd == -1) {
         write(STDERR_FILENO, "Failed to open log file\n", 23);
         return -1;
@@ -225,16 +225,19 @@ int become_daemon() {
 
 void child_process1() {
     printf("Child 1 started\n");
+fflush(stdout);
 
     int fd1 = open(FIFO1, O_RDONLY);
     if (fd1 == -1) {
         printf("Error opening FIFO1 in Child 1\n");
+        fflush(stdout);
         exit(EXIT_FAILURE);
     }
 
     int nums[2];
     if (read(fd1, nums, sizeof(nums)) == -1) {
         printf("Error reading from FIFO1\n");
+        fflush(stdout);
         close(fd1);
         exit(EXIT_FAILURE);
     }
@@ -242,15 +245,18 @@ void child_process1() {
 
     int larger = (nums[0] > nums[1]) ? nums[0] : nums[1];
     printf("Child 1: Comparing %d and %d, larger is %d\n", nums[0], nums[1], larger);
-    
+    fflush(stdout);
+
     int fd2 = open(FIFO2, O_WRONLY);
     if (fd2 == -1) {
         printf("Error opening FIFO2 in Child 1\n");
+        fflush(stdout);
         exit(EXIT_FAILURE);
     }
 
     if (write(fd2, &larger, sizeof(larger)) == -1) {
         printf("Error writing to FIFO2\n");
+        fflush(stdout);
         close(fd2);
         exit(EXIT_FAILURE);
     }
@@ -262,15 +268,18 @@ void child_process1() {
 void child_process2() {
     sleep(10);
     printf("Child 2 started\n");    
+    fflush(stdout);
     int fd = open(FIFO2, O_RDONLY);
     if (fd == -1) {
         printf("Error opening FIFO2 in Child 2\n");
+        fflush(stdout);
         exit(EXIT_FAILURE);
     }    
     
     int larger;
     if (read(fd, &larger, sizeof(larger)) == -1) {
         printf("Error reading from FIFO2\n");
+        fflush(stdout);
         close(fd);
         exit(EXIT_FAILURE);
     }
@@ -278,6 +287,7 @@ void child_process2() {
     close(fd);
 
     printf("The larger number is: %d\n", larger);
+    fflush(stdout);
     exit(EXIT_SUCCESS);
 }
 
@@ -286,6 +296,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <num1> <num2>\n", argv[0]);
         exit(EXIT_FAILURE);
     }    
+
+    setvbuf(stdout, NULL, _IOLBF, 0);  // Line buffering
+    setvbuf(stderr, NULL, _IOLBF, 0);  // Line buffering
 
     // Setup shared memory
     shmid = shmget(IPC_PRIVATE, sizeof(shared_data), IPC_CREAT | 0666);
@@ -418,6 +431,7 @@ int main(int argc, char *argv[]) {
 
     total_children = 2;
     printf("Parent process started. Child1 PID: %d, Child2 PID: %d\n", child1, child2);
+fflush(stdout);
 
     // Open FIFO1 for writing
     int fd1 = open(FIFO1, O_WRONLY);
@@ -443,10 +457,12 @@ int main(int argc, char *argv[]) {
     // Main loop
     while (child_count < total_children) {
         printf("Proceeding...\n");
+        fflush(stdout);
         sleep(2);
     }
 
     printf("All children have exited. Parent terminating.\n");
+    fflush(stdout);
     unlink(FIFO1);
     unlink(FIFO2);
     shmctl(shmid, IPC_RMID, NULL);
