@@ -62,26 +62,25 @@ void sigchld_handler(int sig) {
                 break;
             }
         }
-        
-        // Enhanced exit status reporting
-        if (WIFEXITED(status)) {
-            snprintf(buf, sizeof(buf), 
-                    "Child %d exited normally with status %d\n",
-                    pid, WEXITSTATUS(status));
-        } 
-        else if (WIFSIGNALED(status)) {
-            snprintf(buf, sizeof(buf),
-                    "Child %d killed by signal %d (%s)\n",
-                    pid, WTERMSIG(status), strsignal(WTERMSIG(status)));
-        }
-        else if (WIFSTOPPED(status)) {
-            snprintf(buf, sizeof(buf),
-                    "Child %d stopped by signal %d\n",
-                    pid, WSTOPSIG(status));
-        }
-        write(STDOUT_FILENO, buf, strlen(buf));
-        
+                
         if(pid != daemon_pid) {
+            // Enhanced exit status reporting
+            if (WIFEXITED(status)) {
+                snprintf(buf, sizeof(buf), 
+                        "Child %d exited normally with status %d\n",
+                        pid, WEXITSTATUS(status));
+            } 
+            else if (WIFSIGNALED(status)) {
+                snprintf(buf, sizeof(buf),
+                        "Child %d killed by signal %d (%s)\n",
+                        pid, WTERMSIG(status), strsignal(WTERMSIG(status)));
+            }
+            else if (WIFSTOPPED(status)) {
+                snprintf(buf, sizeof(buf),
+                        "Child %d stopped by signal %d\n",
+                        pid, WSTOPSIG(status));
+            }
+            write(STDOUT_FILENO, buf, strlen(buf));
             child_count++;
         }
         
