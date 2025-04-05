@@ -27,8 +27,11 @@ void sigchld_handler(int sig) {
     pid_t pid;
     
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        printf("Child process %d exited with status %d\n", pid, WEXITSTATUS(status));
-        child_counter += 2; // Increment by two as per requirements
+        if(pid != daemon_pid){
+            printf("Child process %d exited with status %d\n", pid, WEXITSTATUS(status));
+            child_counter += 1; // Increment by two as per requirements
+        }
+       
         
         // Log to daemon if it's running
         if (daemon_pid > 0) {
@@ -236,9 +239,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     
-    // Create daemon process
-    create_daemon();
-    
     // Write numbers to FIFO1
     int fd1 = open(FIFO1, O_WRONLY);
     if (fd1 < 0) {
@@ -257,6 +257,10 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     close(fd1);
+    
+    // Create daemon process
+    create_daemon();    
+    
     
     // Create child processes
     pid_t pid1 = fork();
