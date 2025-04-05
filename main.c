@@ -78,8 +78,8 @@ int become_daemon() {
     // Set file mode creation mask
     umask(0);
 
-    // Change to root directory
-    if (chdir("/") < 0) return -1;
+    // // Change to root directory
+    // if (chdir("/") < 0) return -1;
 
     // Close all open file descriptors
     int maxfd = sysconf(_SC_OPEN_MAX);
