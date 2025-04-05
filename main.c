@@ -73,47 +73,57 @@ void daemon_signal_handler(int sig) {
     }
 }
 
-// Function to become a daemon
 int become_daemon() {
-    int maxfd, fd;
-    
-    // First fork: Parent exits, child continues
+    // First fork
     switch (fork()) {
-        case -1: return -1;  // Error
-        case 0: break;       // Child continues execution
-        default: _exit(EXIT_SUCCESS);  // Parent exits
+        case -1: 
+            return -1;
+        case 0: 
+            break;
+        default: 
+            _exit(EXIT_SUCCESS);
     }
 
-    // Create new session and become session leader
+    // Create new session
     if (setsid() == -1) {
-        printf("setsid failed");
+        write(STDERR_FILENO, "setsid failed\n", 13);
         return -1;
     }
 
-    // Second fork: Ensures the daemon is not a session leader
+    // Second fork
     switch (fork()) {
-        case -1: return -1;  // Error
-        case 0: break;       // Child continues execution
-        default: _exit(EXIT_SUCCESS);  // Parent exits
+        case -1: 
+            return -1;
+        case 0: 
+            break;
+        default: 
+            _exit(EXIT_SUCCESS);
     }
 
-
-    maxfd = sysconf(_SC_OPEN_MAX);
+    // Close all file descriptors
+    int maxfd = sysconf(_SC_OPEN_MAX);
     if (maxfd == -1) maxfd = 1024;
-    for (fd = 0; fd < maxfd; fd++) {
-            close(fd);
+    for (int fd = 0; fd < maxfd; fd++) {
+        close(fd);
     }
 
+    // Open log file
+    int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND, 0644);
+    if (log_fd == -1) {
+        write(STDERR_FILENO, "Failed to open log file\n", 23);
+        return -1;
+    }
 
-    // Redirect standard file descriptors to /dev/null
-    fd = open(LOG_FILE,  O_WRONLY | O_CREAT | O_APPEND);
-    if (fd != -1) {
-        dup2(fd, STDOUT_FILENO);
-        dup2(fd, STDERR_FILENO);
-        // if (fd > 2) close(fd);
-    } else {
-        printf("Failed to open log file");
-        exit(EXIT_FAILURE);
+    // Redirect stdio
+    dup2(log_fd, STDOUT_FILENO);
+    dup2(log_fd, STDERR_FILENO);
+    close(log_fd);
+
+    // Redirect stdin from /dev/null
+    int null_fd = open("/dev/null", O_RDONLY);
+    if (null_fd != -1) {
+        dup2(null_fd, STDIN_FILENO);
+        close(null_fd);
     }
 
     return 0;
