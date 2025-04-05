@@ -196,6 +196,17 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }    
 
+    int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND, 0644);
+    if (log_fd == -1) {
+        perror("Failed to open log file");
+        exit(EXIT_FAILURE);
+    }
+    
+    // Redirect stdout/stderr for THIS process
+    dup2(log_fd, STDOUT_FILENO);
+    dup2(log_fd, STDERR_FILENO);
+    close(log_fd);
+
     // Create the daemon process
     pid_t daemon_pid = fork();
     if (daemon_pid == 0) {
