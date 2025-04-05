@@ -81,7 +81,10 @@ void sigchld_handler(int sig) {
         }
         write(STDOUT_FILENO, buf, strlen(buf));
         
-        child_count++;
+        if(pid != daemon_pid) {
+            child_count++;
+        }
+        
     }
     
     // Handle waitpid errors (except ECHILD which means no children)
@@ -168,7 +171,8 @@ void check_timeouts() {
 
 int become_daemon() {
     // First fork
-    switch (fork()) {
+    daemon_pid = fork();
+    switch (daemon_pid) {
         case -1: 
             return -1;
         case 0: 
@@ -184,7 +188,8 @@ int become_daemon() {
     }
 
     // Second fork
-    switch (fork()) {
+    daemon_pid = fork();
+    switch (daemon_pid) {
         case -1: 
             return -1;
         case 0: 
