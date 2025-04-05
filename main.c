@@ -16,85 +16,99 @@
 #define LOG_FILE "daemon_log.txt"
 
 volatile sig_atomic_t child_count = 0;
-volatile sig_atomic_t total_children = 0;
+volatile sig_atomic_t total_children = 2; // We always create 2 children
 pid_t daemon_pid = 0;
 
-void sigchld_handler(int sig) { 
+void log_message(const char *message) {
+    int fd = open(LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd == -1) return;
+    
+    time_t now;
+    time(&now);
+    char time_buf[50];
+    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    
+    dprintf(fd, "[%s] %s\n", time_buf, message);
+    close(fd);
+}
+
+void sigchld_handler(int sig) {
     (void)sig;
     int status;
     pid_t pid;
     char buf[100];
-
+    
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        int len = snprintf(buf, sizeof(buf), "Child PID %d exited with status %d\n", 
-                          pid, WEXITSTATUS(status));
+        int len = snprintf(buf, sizeof(buf), "Child %d exited with status %d", 
+                         pid, WEXITSTATUS(status));
         write(STDOUT_FILENO, buf, len);
+        log_message(buf);
         child_count++;
     }
 }
 
 void daemon_signal_handler(int sig) {
-    int log_fd = open(LOG_FILE, O_WRONLY | O_APPEND | O_CREAT, 0644);
-    if (log_fd == -1) return;
-
-    time_t now;
-    time(&now);
-    char time_buf[50];
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", localtime(&now));
-
     switch(sig) {
         case SIGUSR1:
-            dprintf(log_fd, "[%s] Received SIGUSR1 signal\n", time_buf);
+            log_message("Received SIGUSR1");
             break;
         case SIGHUP:
-            dprintf(log_fd, "[%s] Received SIGHUP signal\n", time_buf);
+            log_message("Received SIGHUP");
             break;
         case SIGTERM:
-            dprintf(log_fd, "[%s] Received SIGTERM signal. Daemon exiting.\n", time_buf);
-            close(log_fd);
+            log_message("Received SIGTERM - exiting");
             exit(EXIT_SUCCESS);
-            break;
     }
-    close(log_fd);
 }
 
 int become_daemon() {
-    // First fork
+    // First fork to background the process
     pid_t pid = fork();
     if (pid < 0) return -1;
-    if (pid > 0) _exit(EXIT_SUCCESS);
+    if (pid > 0) _exit(EXIT_SUCCESS);  // Parent exits
 
     // Create new session
     if (setsid() < 0) return -1;
 
-    // Second fork
+    // Second fork to ensure we're not a session leader
     pid = fork();
     if (pid < 0) return -1;
-    if (pid > 0) _exit(EXIT_SUCCESS);
+    if (pid > 0) _exit(EXIT_SUCCESS);  // Parent exits
 
     // Set file mode creation mask
     umask(0);
 
-    // Change working directory
+    // Change to root directory
     if (chdir("/") < 0) return -1;
 
     // Close all open file descriptors
     int maxfd = sysconf(_SC_OPEN_MAX);
-    for (int fd = 0; fd < maxfd; fd++) close(fd);
+    if (maxfd == -1) maxfd = 1024;  // Fallback if sysconf fails
+    for (int fd = 0; fd < maxfd; fd++) {
+        close(fd);
+    }
 
-    // Reopen stdin, stdout, stderr to /dev/null
-    open("/dev/null", O_RDONLY); // stdin
+    // Reopen standard file descriptors
+    open("/dev/null", O_RDONLY);  // stdin
     int log_fd = open(LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (log_fd == -1) return -1;
+    if (log_fd < 0) return -1;
+
+    // Redirect stdout and stderr to log file
     dup2(log_fd, STDOUT_FILENO);
     dup2(log_fd, STDERR_FILENO);
-    if (log_fd > STDERR_FILENO) close(log_fd);
+
+    // Close the original log_fd if it wasn't stdout/stderr
+    if (log_fd > STDERR_FILENO) {
+        close(log_fd);
+    }
 
     return 0;
 }
 
 void child_process1() {
-    int fd1 = open(FIFO1, O_RDONLY);
+    // Wait for FIFO to be ready
+    int fd1 = -1;
+    while ((fd1 = open(FIFO1, O_RDONLY)) == -1 && errno == EINTR);
     if (fd1 == -1) {
         perror("Child1: open FIFO1");
         exit(EXIT_FAILURE);
@@ -127,12 +141,15 @@ void child_process1() {
 }
 
 void child_process2() {
-    int fd = open(FIFO2, O_RDONLY);
+    sleep(10);
+    // Wait for FIFO to be ready
+    int fd = -1;
+    while ((fd = open(FIFO2, O_RDONLY)) == -1 && errno == EINTR);
     if (fd == -1) {
         perror("Child2: open FIFO2");
         exit(EXIT_FAILURE);
-    }    
-    
+    }
+
     int larger;
     if (read(fd, &larger, sizeof(larger)) != sizeof(larger)) {
         perror("Child2: read FIFO2");
@@ -148,7 +165,7 @@ void child_process2() {
 int main(int argc, char *argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <num1> <num2>\n", argv[0]);
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     int num1 = atoi(argv[1]);
@@ -161,7 +178,7 @@ int main(int argc, char *argv[]) {
     // Create FIFOs
     if (mkfifo(FIFO1, 0666) == -1 || mkfifo(FIFO2, 0666) == -1) {
         perror("mkfifo");
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     // Create daemon first
@@ -169,53 +186,53 @@ int main(int argc, char *argv[]) {
     if (daemon_pid == 0) {
         if (become_daemon() == -1) {
             perror("daemon");
-            exit(EXIT_FAILURE);
+            return EXIT_FAILURE;
         }
 
         signal(SIGUSR1, daemon_signal_handler);
         signal(SIGHUP, daemon_signal_handler);
         signal(SIGTERM, daemon_signal_handler);
 
-        while (1) sleep(5);
+        log_message("Daemon started");
+        while (1) pause(); // Wait for signals
     }
 
     // Set up SIGCHLD handler
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
     if (sigaction(SIGCHLD, &sa, NULL) < 0) {
         perror("sigaction");
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     // Write numbers to FIFO1
     int fd1 = open(FIFO1, O_WRONLY);
     if (fd1 == -1) {
         perror("open FIFO1");
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     int nums[2] = {num1, num2};
     if (write(fd1, nums, sizeof(nums)) != sizeof(nums)) {
         perror("write FIFO1");
         close(fd1);
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
     close(fd1);
 
     // Create children
-    total_children = 2;
     pid_t child1 = fork();
     if (child1 == 0) child_process1();
 
     pid_t child2 = fork();
     if (child2 == 0) child_process2();
 
-    // Parent main loop
+    // Parent waits for children
     while (child_count < total_children) {
-        printf("proceeding\n");
-        sleep(2);
+        printf("Waiting for children... (%d/%d)\n", child_count, total_children);
+        sleep(1);
     }
 
     // Cleanup
