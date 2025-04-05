@@ -94,16 +94,12 @@ int become_daemon() {
     }
 
 
-    int fifo1_fd = open(FIFO1, O_RDWR);
-    int fifo2_fd = open(FIFO2, O_RDWR);
-
     maxfd = sysconf(_SC_OPEN_MAX);
     if (maxfd == -1) maxfd = 1024;
     for (fd = 0; fd < maxfd; fd++) {
-        if (fd != fifo1_fd && fd != fifo2_fd) { // Keep FIFOs open
             close(fd);
-        }
     }
+
 
     // Redirect standard file descriptors to /dev/null
     fd = open(LOG_FILE,  O_WRONLY | O_CREAT | O_APPEND);
@@ -211,7 +207,7 @@ int main(int argc, char *argv[]) {
         printf("fifo2\n");
     }
 
-    int fd1 = open(FIFO1, O_RDWR | O_NONBLOCK);
+    int fd1 = open(FIFO1, O_WRONLY);
 
     if (fd1!=-1) {
         int num[2] = {num1, num2};
@@ -226,7 +222,7 @@ int main(int argc, char *argv[]) {
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP | SA_NOCLDWAIT; // Ensure handler runs for each child
+    sa.sa_flags = SA_RESTART ; // Ensure handler runs for each child
     if (sigaction(SIGCHLD, &sa, NULL) < 0) {
         perror("sigaction");
         unlink(FIFO1);
@@ -241,6 +237,8 @@ int main(int argc, char *argv[]) {
     pid_t child1 = fork();
     if (child1 == -1) {
         perror("fork failed for child1");
+        unlink(FIFO1);
+        unlink(FIFO2);
         exit(EXIT_FAILURE);
     } else if (child1 == 0) {
         child_process1();
@@ -249,6 +247,8 @@ int main(int argc, char *argv[]) {
     pid_t child2 = fork();
     if (child2 == -1) {
         perror("fork failed for child2");
+        unlink(FIFO1);
+        unlink(FIFO2);
         exit(EXIT_FAILURE);
     } else if (child2 == 0) {
         child_process2();
@@ -289,5 +289,7 @@ int main(int argc, char *argv[]) {
     }
 
     write(STDOUT_FILENO, "All children have exited. Parent terminating.\n", 47);
+    unlink(FIFO1);
+    unlink(FIFO2);
     exit(EXIT_SUCCESS);
 }
