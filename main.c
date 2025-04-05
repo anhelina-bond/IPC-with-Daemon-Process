@@ -1,5 +1,4 @@
 #define _POSIX_C_SOURCE 200809L
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,33 +11,64 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 #define FIFO1 "fifo1"
 #define FIFO2 "fifo2"
 #define LOG_FILE "daemon_log.txt"
+#define CHILD_TIMEOUT 30  // 30 seconds timeout
+#define MAX_CHILDREN 10
+
+// Structure to track child processes
+typedef struct {
+    pid_t pid;
+    time_t start_time;
+} child_process;
+
+// Shared memory structure
+typedef struct {
+    child_process children[MAX_CHILDREN];
+    int num_children;
+} shared_data;
 
 volatile sig_atomic_t child_count = 0;
 volatile sig_atomic_t total_children = 0;
 pid_t daemon_pid = 0;
+int shmid = -1;
 
 // Signal handler for SIGCHLD
 void sigchld_handler(int sig) { 
     (void)sig;
     int status;
     pid_t pid;
+    shared_data *shared = shmat(shmid, NULL, 0);
+    
+    if (shared == (void*)-1) {
+        write(STDERR_FILENO, "Failed to attach shared memory\n", 30);
+        return;
+    }
 
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        // Log exit status safely
+        // Remove from tracking
+        for (int i = 0; i < shared->num_children; i++) {
+            if (shared->children[i].pid == pid) {
+                // Shift array down
+                memmove(&shared->children[i], &shared->children[i+1],
+                       (shared->num_children - i - 1) * sizeof(child_process));
+                shared->num_children--;
+                break;
+            }
+        }
+        
         char buf[100];
         int len = snprintf(buf, sizeof(buf), "Child PID %d exited with status %d\n", 
-                           pid, WEXITSTATUS(status));
-        write(STDOUT_FILENO, buf, len); // Async-safe logging
-
+                         pid, WEXITSTATUS(status));
+        write(STDOUT_FILENO, buf, len);
         child_count++;
-        printf("Child count: %d", child_count);
-
-
     }
+    
+    shmdt(shared);
 }
 
 // Signal handler for daemon process
@@ -65,12 +95,51 @@ void daemon_signal_handler(int sig) {
             return;
     }
     
-    // Async-safe write to STDERR_FILENO (which is redirected to log file)
     write(STDERR_FILENO, buf, strlen(buf));
     
     if (sig == SIGTERM) {
+        if (shmid != -1) {
+            shmctl(shmid, IPC_RMID, NULL);
+        }
         _exit(EXIT_SUCCESS);
     }
+}
+
+// Timeout checking function
+void check_timeouts() {
+    shared_data *shared = shmat(shmid, NULL, 0);
+    if (shared == (void*)-1) {
+        write(STDERR_FILENO, "Failed to attach shared memory for timeout check\n", 50);
+        return;
+    }
+
+    time_t now = time(NULL);
+    
+    for (int i = 0; i < shared->num_children; i++) {
+        if (now - shared->children[i].start_time > CHILD_TIMEOUT) {
+            pid_t pid = shared->children[i].pid;
+            
+            char buf[100];
+            snprintf(buf, sizeof(buf), "Terminating stalled child PID %d\n", pid);
+            write(STDERR_FILENO, buf, strlen(buf));
+
+            kill(pid, SIGTERM);
+            sleep(1);  // Grace period
+            
+            if (waitpid(pid, NULL, WNOHANG) == 0) {
+                kill(pid, SIGKILL);
+                waitpid(pid, NULL, 0);
+            }
+            
+            // Remove from tracking
+            memmove(&shared->children[i], &shared->children[i+1],
+                   (shared->num_children - i - 1) * sizeof(child_process));
+            shared->num_children--;
+            i--;
+        }
+    }
+    
+    shmdt(shared);
 }
 
 int become_daemon() {
@@ -86,7 +155,7 @@ int become_daemon() {
 
     // Create new session
     if (setsid() == -1) {
-        write(STDERR_FILENO, "setsid failed\n", 13);
+        write(STDERR_FILENO, "setsid failed\n", 14);
         return -1;
     }
 
@@ -126,37 +195,35 @@ int become_daemon() {
     return 0;
 }
 
-
 void child_process1() {
     printf("Child 1 started\n");
 
     int fd1 = open(FIFO1, O_RDONLY);
     if (fd1 == -1) {
-        printf("Error opening FIFO1 in Child 1");
+        printf("Error opening FIFO1 in Child 1\n");
         exit(EXIT_FAILURE);
     }
 
     int nums[2];
-    ssize_t bytes_read = read(fd1, nums, sizeof(nums));
-    if (bytes_read == -1) {
-        printf("Error reading from FIFO1");
+    if (read(fd1, nums, sizeof(nums)) == -1) {
+        printf("Error reading from FIFO1\n");
+        close(fd1);
         exit(EXIT_FAILURE);
     }
     close(fd1);
 
     int larger = (nums[0] > nums[1]) ? nums[0] : nums[1];
-
     printf("Child 1: Comparing %d and %d, larger is %d\n", nums[0], nums[1], larger);
     
     int fd2 = open(FIFO2, O_WRONLY);
     if (fd2 == -1) {
-        printf("Error opening FIFO2 in Child 1");
+        printf("Error opening FIFO2 in Child 1\n");
         exit(EXIT_FAILURE);
     }
 
-    ssize_t bytes_written = write(fd2, &larger, sizeof(larger));
-    if (bytes_written == -1) {
-        printf("Error writing to FIFO2");
+    if (write(fd2, &larger, sizeof(larger)) == -1) {
+        printf("Error writing to FIFO2\n");
+        close(fd2);
         exit(EXIT_FAILURE);
     }
     close(fd2);
@@ -164,31 +231,26 @@ void child_process1() {
     exit(EXIT_SUCCESS);
 }
 
-
 void child_process2() {
-    sleep(10); // Simulated delay
-
     printf("Child 2 started\n");    
     int fd = open(FIFO2, O_RDONLY);
     if (fd == -1) {
-        printf("Error opening FIFO2 in Child 2");
+        printf("Error opening FIFO2 in Child 2\n");
         exit(EXIT_FAILURE);
     }    
     
     int larger;
-    ssize_t bytes_read = read(fd, &larger, sizeof(larger));
-    if (bytes_read == -1) {
-        printf("Error reading from FIFO2");
+    if (read(fd, &larger, sizeof(larger)) == -1) {
+        printf("Error reading from FIFO2\n");
+        close(fd);
         exit(EXIT_FAILURE);
     }
     
     close(fd);
 
     printf("The larger number is: %d\n", larger);
-    
     exit(EXIT_SUCCESS);
 }
-
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
@@ -196,25 +258,43 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }    
 
+    // Setup shared memory
+    shmid = shmget(IPC_PRIVATE, sizeof(shared_data), IPC_CREAT | 0666);
+    if (shmid == -1) {
+        perror("shmget failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize shared memory
+    shared_data *shared = shmat(shmid, NULL, 0);
+    if (shared == (void*)-1) {
+        perror("shmat failed");
+        shmctl(shmid, IPC_RMID, NULL);
+        exit(EXIT_FAILURE);
+    }
+    memset(shared, 0, sizeof(shared_data));
+    shmdt(shared);
+
     int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND, 0644);
     if (log_fd == -1) {
         perror("Failed to open log file");
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     }
     
-    // Redirect stdout/stderr for THIS process
+    // Redirect stdout/stderr
     dup2(log_fd, STDOUT_FILENO);
     dup2(log_fd, STDERR_FILENO);
     close(log_fd);
 
     // Create the daemon process
-    pid_t daemon_pid = fork();
+    daemon_pid = fork();
     if (daemon_pid == 0) {
         if (become_daemon() == -1) {
             fprintf(stderr, "Failed to create daemon\n");
+            shmctl(shmid, IPC_RMID, NULL);
             exit(EXIT_FAILURE);
         }
-        fprintf(stderr, "TEST: This should only appear in daemon_log.txt\n"); //delete****************************
 
         struct sigaction dsa;
         dsa.sa_handler = daemon_signal_handler;
@@ -224,8 +304,10 @@ int main(int argc, char *argv[]) {
         sigaction(SIGHUP, &dsa, NULL);
         sigaction(SIGTERM, &dsa, NULL);
 
+        // Daemon main loop
         while (1) {
-            sleep(5);
+            check_timeouts();
+            sleep(5);  // Check every 5 seconds
         }
     }
     
@@ -233,90 +315,111 @@ int main(int argc, char *argv[]) {
     int num2 = atoi(argv[2]);
 
     // Create FIFOs
-    unlink(FIFO1);  // Remove if they exist
+    unlink(FIFO1);
     unlink(FIFO2);
     
     if (mkfifo(FIFO1, 0666) == -1) {
-        fprintf(stderr, "mkfifo FIFO1 failed\n");  // Changed from printf
+        fprintf(stderr, "mkfifo FIFO1 failed\n");
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "fifo1 created successfully\n");  // Changed from printf
+    fprintf(stderr, "fifo1 created successfully\n");
 
     if (mkfifo(FIFO2, 0666) < 0) {
-        fprintf(stderr, "mkfifo FIFO2 failed\n");  // Changed from printf
+        fprintf(stderr, "mkfifo FIFO2 failed\n");
         unlink(FIFO1);
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "fifo2 created successfully\n");  // Changed from printf
+    fprintf(stderr, "fifo2 created successfully\n");
 
-
-    // Set up SIGCHLD handler first
+    // Set up SIGCHLD handler
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
     if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-        printf("sigaction");
+        fprintf(stderr, "sigaction failed\n");
         unlink(FIFO1);
         unlink(FIFO2);
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     }
-    printf("SIGCHLD handler assigned\n");
 
-    // Create child processes first
+    // Create child processes
     pid_t child1 = fork();
     if (child1 == -1) {
-        printf("fork failed for child1");
+        fprintf(stderr, "fork failed for child1\n");
         unlink(FIFO1);
         unlink(FIFO2);
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     } else if (child1 == 0) {
-        child_process1();  // This will block waiting for FIFO1 to be opened for writing
+        child_process1();
+    } else {
+        // Add to shared memory
+        shared = shmat(shmid, NULL, 0);
+        if (shared != (void*)-1 && shared->num_children < MAX_CHILDREN) {
+            shared->children[shared->num_children].pid = child1;
+            shared->children[shared->num_children].start_time = time(NULL);
+            shared->num_children++;
+            shmdt(shared);
+        }
     }
 
     pid_t child2 = fork();
     if (child2 == -1) {
-        printf("fork failed for child2");
+        fprintf(stderr, "fork failed for child2\n");
         unlink(FIFO1);
         unlink(FIFO2);
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     } else if (child2 == 0) {
-        child_process2();  // This will sleep first
+        child_process2();
+    } else {
+        // Add to shared memory
+        shared = shmat(shmid, NULL, 0);
+        if (shared != (void*)-1 && shared->num_children < MAX_CHILDREN) {
+            shared->children[shared->num_children].pid = child2;
+            shared->children[shared->num_children].start_time = time(NULL);
+            shared->num_children++;
+            shmdt(shared);
+        }
     }
 
+    total_children = 2;
     printf("Parent process started. Child1 PID: %d, Child2 PID: %d\n", child1, child2);
 
-    // Now open FIFO1 for writing (after child1 is ready to read)
+    // Open FIFO1 for writing
     int fd1 = open(FIFO1, O_WRONLY);
     if (fd1 == -1) {
-        printf("Error opening FIFO1 in write mode");
+        fprintf(stderr, "Error opening FIFO1 in write mode\n");
         unlink(FIFO1);
         unlink(FIFO2);
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     }
 
     int num[2] = {num1, num2};
     if (write(fd1, num, sizeof(num)) == -1) {
-        printf("Error writing to FIFO1");
+        fprintf(stderr, "Error writing to FIFO1\n");
         close(fd1);
         unlink(FIFO1);
         unlink(FIFO2);
+        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     }
     close(fd1);
 
-    
-    total_children = 2;
-
-    printf("Main process PID: %d, entering main loop\n", getpid());
-
+    // Main loop
     while (child_count < total_children) {
-        printf("proceeding...\n");
+        printf("Waiting for children to complete...\n");
         sleep(2);
     }
 
     printf("All children have exited. Parent terminating.\n");
     unlink(FIFO1);
     unlink(FIFO2);
+    shmctl(shmid, IPC_RMID, NULL);
     exit(EXIT_SUCCESS);
-}
+} 
