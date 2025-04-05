@@ -99,14 +99,7 @@ int become_daemon() {
         default: 
             _exit(EXIT_SUCCESS);
     }
-
-    // Close all file descriptors
-    int maxfd = sysconf(_SC_OPEN_MAX);
-    if (maxfd == -1) maxfd = 1024;
-    for (int fd = 0; fd < maxfd; fd++) {
-        close(fd);
-    }
-
+    
     // Open log file
     int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND, 0644);
     if (log_fd == -1) {
@@ -118,6 +111,13 @@ int become_daemon() {
     dup2(log_fd, STDOUT_FILENO);
     dup2(log_fd, STDERR_FILENO);
     close(log_fd);
+
+    // Close all file descriptors
+    int maxfd = sysconf(_SC_OPEN_MAX);
+    if (maxfd == -1) maxfd = 1024;
+    for (int fd = 0; fd < maxfd; fd++) {
+        close(fd);
+    }
 
     // Redirect stdin from /dev/null
     int null_fd = open("/dev/null", O_RDONLY);
