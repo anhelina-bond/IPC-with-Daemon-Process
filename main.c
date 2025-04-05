@@ -43,33 +43,33 @@ void sigchld_handler(int sig) {
 
 // Signal handler for daemon process
 void daemon_signal_handler(int sig) {
-    FILE *log = fopen(LOG_FILE, "a");
+    char buf[100];
     time_t now;
     time(&now);
+    char *time_str = ctime(&now);
+    
+    // Remove newline from ctime() output
+    time_str[strlen(time_str)-1] = '\0';
     
     switch(sig) {
         case SIGUSR1:
-            if (log) {
-                fprintf(log, "[%s] Received SIGUSR1 signal\n", ctime(&now));
-        
-                fclose(log);
-            }
+            snprintf(buf, sizeof(buf), "[%s] SIGUSR1 received\n", time_str);
             break;
         case SIGHUP:
-            if (log) {
-                fprintf(log, "[%s] Received SIGHUP signal\n", ctime(&now));
-        
-                fclose(log);
-            }
+            snprintf(buf, sizeof(buf), "[%s] SIGHUP received\n", time_str);
             break;
         case SIGTERM:
-            if (log) {
-                fprintf(log, "[%s] Received SIGTERM signal. Daemon exiting.\n", ctime(&now));
-        
-                fclose(log);
-            }
-            exit(EXIT_SUCCESS);
+            snprintf(buf, sizeof(buf), "[%s] SIGTERM received - exiting\n", time_str);
             break;
+        default:
+            return;
+    }
+    
+    // Async-safe write to STDERR_FILENO (which is redirected to log file)
+    write(STDERR_FILENO, buf, strlen(buf));
+    
+    if (sig == SIGTERM) {
+        _exit(EXIT_SUCCESS);
     }
 }
 
