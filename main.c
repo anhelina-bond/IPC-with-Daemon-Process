@@ -197,10 +197,7 @@ int main(int argc, char *argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <num1> <num2>\n", argv[0]);
         exit(EXIT_FAILURE);
-    }
-
-    int num1 = atoi(argv[1]);
-    int num2 = atoi(argv[2]);
+    }    
 
     // Create the daemon process
     pid_t daemon_pid = fork();
@@ -209,6 +206,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Failed to create daemon\n");
             exit(EXIT_FAILURE);
         }
+        fprintf(stderr, "TEST: This should only appear in daemon_log.txt\n"); //delete****************************
 
         struct sigaction dsa;
         dsa.sa_handler = daemon_signal_handler;
@@ -222,23 +220,26 @@ int main(int argc, char *argv[]) {
             sleep(5);
         }
     }
+    
+    int num1 = atoi(argv[1]);
+    int num2 = atoi(argv[2]);
 
     // Create FIFOs
     unlink(FIFO1);  // Remove if they exist
     unlink(FIFO2);
     
     if (mkfifo(FIFO1, 0666) == -1) {
-        printf("mkfifo FIFO1");
+        fprintf(stderr, "mkfifo FIFO1 failed\n");  // Changed from printf
         exit(EXIT_FAILURE);
     }
-    printf("fifo1 created successfully\n");
-    
+    fprintf(stderr, "fifo1 created successfully\n");  // Changed from printf
+
     if (mkfifo(FIFO2, 0666) < 0) {
-        printf("mkfifo FIFO2");
+        fprintf(stderr, "mkfifo FIFO2 failed\n");  // Changed from printf
         unlink(FIFO1);
         exit(EXIT_FAILURE);
     }
-    printf("fifo2 created successfully\n");
+    fprintf(stderr, "fifo2 created successfully\n");  // Changed from printf
 
 
     // Set up SIGCHLD handler first
