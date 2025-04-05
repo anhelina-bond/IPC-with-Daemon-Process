@@ -112,12 +112,9 @@ int become_daemon() {
     dup2(log_fd, STDERR_FILENO);
     close(log_fd);
 
-    // Close all file descriptors
+    // Close all other descriptors
     int maxfd = sysconf(_SC_OPEN_MAX);
-    if (maxfd == -1) maxfd = 1024;
-    for (int fd = 0; fd < maxfd; fd++) {
-        close(fd);
-    }
+    for (int fd = 3; fd < maxfd; fd++) close(fd);
 
     // Redirect stdin from /dev/null
     int null_fd = open("/dev/null", O_RDONLY);
