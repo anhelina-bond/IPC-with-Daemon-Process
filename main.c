@@ -170,14 +170,13 @@ void check_timeouts() {
 
 int become_daemon() {
     // First fork
-    daemon_pid = fork();
-    switch (daemon_pid) {
+    switch (fork()) {
         case -1: 
             return -1;
         case 0: 
             break;
         default: 
-            _exit(EXIT_SUCCESS);
+            _exit(EXIT_SUCCESS); // Parent exits
     }
 
     // Create new session
@@ -187,14 +186,13 @@ int become_daemon() {
     }
 
     // Second fork
-    daemon_pid = fork();
-    switch (daemon_pid) {
+    switch (fork()) {
         case -1: 
             return -1;
         case 0: 
             break;
         default: 
-            _exit(EXIT_SUCCESS);
+            _exit(EXIT_SUCCESS);    // Session leader exits
     }
     
     // Open log file
@@ -219,6 +217,8 @@ int become_daemon() {
         dup2(null_fd, STDIN_FILENO);
         close(null_fd);
     }
+
+    daemon_pid = getpid();
 
     return 0;
 }
@@ -330,8 +330,7 @@ int main(int argc, char *argv[]) {
     close(log_fd);
 
     // Create the daemon process
-    daemon_pid = fork();
-    if (daemon_pid == 0) {
+    if (fork() == 0) {
         if (become_daemon() == -1) {
             fprintf(stderr, "Failed to create daemon\n");
             shmctl(shmid, IPC_RMID, NULL);
