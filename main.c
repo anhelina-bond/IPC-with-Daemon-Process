@@ -110,13 +110,13 @@ void daemon_signal_handler(int sig) {
     
     switch(sig) {
         case SIGUSR1:
-            snprintf(buf, sizeof(buf), "\n[%s] SIGUSR1 received\n", time_str);
+            snprintf(buf, sizeof(buf), "[%s] SIGUSR1 received\n", time_str);
             break;
         case SIGHUP:
-            snprintf(buf, sizeof(buf), "\n[%s] SIGHUP received\n", time_str);
+            snprintf(buf, sizeof(buf), "[%s] SIGHUP received\n", time_str);
             break;
         case SIGTERM:
-            snprintf(buf, sizeof(buf), "\n[%s] SIGTERM received - exiting\n", time_str);
+            snprintf(buf, sizeof(buf), "[%s] SIGTERM received - exiting\n", time_str);
             break;
         default:
             return;
