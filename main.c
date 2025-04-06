@@ -466,6 +466,6 @@ fflush(stdout);
     unlink(FIFO1);
     unlink(FIFO2);
     shmctl(shmid, IPC_RMID, NULL);
-    kill(daemon_pid);
+    kill(daemon_pid, SIGTERM);
     exit(EXIT_SUCCESS);
 } 
