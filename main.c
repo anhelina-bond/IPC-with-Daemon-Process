@@ -36,6 +36,7 @@ volatile sig_atomic_t child_count = 0;
 volatile sig_atomic_t total_children = 0;
 pid_t daemon_pid = 0;
 int shmid = -1;
+int daemon_pipe[2];
 
 // Signal handler for SIGCHLD
 void sigchld_handler(int sig) {
@@ -194,6 +195,10 @@ int become_daemon() {
         default: 
             _exit(EXIT_SUCCESS);    // Session leader exits
     }
+
+    pid_t mypid = getpid();
+    write(daemon_pipe[1], &mypid, sizeof(mypid));  // Send PID to parent
+    close(daemon_pipe[1]);  // Close write end
     
     // Open log file
     int log_fd = open(LOG_FILE, O_WRONLY|O_CREAT|O_APPEND , 0644);
@@ -329,8 +334,15 @@ int main(int argc, char *argv[]) {
     dup2(log_fd, STDERR_FILENO);
     close(log_fd);
 
-    // Create the daemon process
-    if (fork() == 0) {
+    if (pipe(daemon_pipe) == -1) {
+        perror("pipe creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Fork the daemon
+    pid_t fork_pid = fork();
+    if (fork_pid == 0) {
+        close(daemon_pipe[0]);  // Close read end in child
         if (become_daemon() == -1) {
             fprintf(stderr, "Failed to create daemon\n");
             shmctl(shmid, IPC_RMID, NULL);
@@ -350,6 +362,14 @@ int main(int argc, char *argv[]) {
             check_timeouts();
             sleep(5);  // Check every 5 seconds
         }
+    } else {
+        close(daemon_pipe[1]);  // Close write end in parent
+        
+        // Read the daemon's PID
+        read(daemon_pipe[0], &daemon_pid, sizeof(daemon_pid));
+        close(daemon_pipe[0]);
+        
+        printf("Daemon PID: %d\n", daemon_pid);
     }
     
     int num1 = atoi(argv[1]);
