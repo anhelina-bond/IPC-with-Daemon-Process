@@ -56,33 +56,30 @@ void sigchld_handler(int sig) {
         // Remove from tracking
         for (int i = 0; i < shared->num_children; i++) {
             if (shared->children[i].pid == pid) {
+                // Enhanced exit status reporting
+                if (WIFEXITED(status)) {
+                    snprintf(buf, sizeof(buf), 
+                            "Child %d exited normally with status %d\n",
+                            pid, WEXITSTATUS(status));
+                } 
+                else if (WIFSIGNALED(status)) {
+                    snprintf(buf, sizeof(buf),
+                            "Child %d killed by signal %d (%s)\n",
+                            pid, WTERMSIG(status), strsignal(WTERMSIG(status)));
+                }
+                else if (WIFSTOPPED(status)) {
+                    snprintf(buf, sizeof(buf),
+                            "Child %d stopped by signal %d\n",
+                            pid, WSTOPSIG(status));
+                }
+                write(STDOUT_FILENO, buf, strlen(buf));
+                child_count++;
                 // Shift array down
                 memmove(&shared->children[i], &shared->children[i+1],
                        (shared->num_children - i - 1) * sizeof(child_process));
                 shared->num_children--;
                 break;
             }
-        }
-                
-        if(pid != daemon_pid) {
-            // Enhanced exit status reporting
-            if (WIFEXITED(status)) {
-                snprintf(buf, sizeof(buf), 
-                        "Child %d exited normally with status %d\n",
-                        pid, WEXITSTATUS(status));
-            } 
-            else if (WIFSIGNALED(status)) {
-                snprintf(buf, sizeof(buf),
-                        "Child %d killed by signal %d (%s)\n",
-                        pid, WTERMSIG(status), strsignal(WTERMSIG(status)));
-            }
-            else if (WIFSTOPPED(status)) {
-                snprintf(buf, sizeof(buf),
-                        "Child %d stopped by signal %d\n",
-                        pid, WSTOPSIG(status));
-            }
-            write(STDOUT_FILENO, buf, strlen(buf));
-            child_count++;
         }
         
     }
