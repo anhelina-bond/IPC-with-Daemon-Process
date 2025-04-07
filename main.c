@@ -71,9 +71,6 @@ void daemon_signal_handler(int sig) {
     write(STDERR_FILENO, buf, strlen(buf));
     
     if (sig == SIGTERM) {
-        if (shmid != -1) {
-            shmctl(shmid, IPC_RMID, NULL);
-        }
         _exit(EXIT_SUCCESS);
     }
 }
