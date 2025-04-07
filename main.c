@@ -167,7 +167,10 @@ int main(int argc, char *argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <num1> <num2>\n", argv[0]);
         exit(EXIT_FAILURE);
-    }
+    }    
+
+    setvbuf(stdout, NULL, _IOLBF, 0);  // Line buffering
+    setvbuf(stderr, NULL, _IOLBF, 0);  // Line buffering
 
     // Become daemon
     if (become_daemon() == -1) {
