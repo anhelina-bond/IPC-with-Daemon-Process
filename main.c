@@ -182,10 +182,10 @@ int main(int argc, char *argv[]) {
         sigaction(SIGHUP, &dsa, NULL);
         sigaction(SIGTERM, &dsa, NULL);
 
-        // Daemon main loop
-        while (1) {
-            sleep(5);  // Check every 5 seconds
-        }
+        // // Daemon main loop
+        // while (1) {
+        //     sleep(5);  // Check every 5 seconds
+        // }
     }
 
     
@@ -206,6 +206,19 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     fprintf(stderr, "fifo2 created successfully\n");
+
+     // Set up SIGCHLD handler
+    struct sigaction sa;
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+        fprintf(stderr, "sigaction failed\n");
+        unlink(FIFO1);
+        unlink(FIFO2);
+        shmctl(shmid, IPC_RMID, NULL);
+        exit(EXIT_FAILURE);
+    }
 
     // Fork child processes
     pid_t child1 = fork();
@@ -249,7 +262,9 @@ int main(int argc, char *argv[]) {
                 child_count++;
             }
         }
-        sleep(1);
+        printf("Proceeding...\n");
+        fflush(stdout);
+        sleep(2);
     }
 
     // Cleanup
