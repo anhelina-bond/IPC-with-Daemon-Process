@@ -15,7 +15,16 @@
 #define FIFO2 "fifo2"
 #define LOG_FILE "daemon_log.txt"
 #define CHILD_TIMEOUT 15  // 15 seconds timeout
+#define MAX_CHILDREN 10
 
+typedef struct {
+    pid_t pid;
+    time_t start_time;
+    int timed_out;  // Flag to mark terminated processes
+} ChildProcess;
+
+ChildProcess child_table[MAX_CHILDREN];
+int num_children = 0;
 volatile sig_atomic_t child_count = 0;
 volatile sig_atomic_t total_children = 0;
 
@@ -39,6 +48,15 @@ void sigchld_handler(int sig) {
             snprintf(buf, sizeof(buf), "[%s] Child %d killed by signal %d\n",
                     time_str, pid, WTERMSIG(status));
         }
+
+        // Mark child as terminated in table
+        for (int i = 0; i < num_children; i++) {
+            if (child_table[i].pid == pid) {
+                child_table[i].timed_out = 1;
+                break;
+            }
+        }
+
         write(STDOUT_FILENO, buf, strlen(buf));
         child_count++;
     }
@@ -72,6 +90,35 @@ void daemon_signal_handler(int sig) {
     
     if (sig == SIGTERM) {
         _exit(EXIT_SUCCESS);
+    }
+}
+
+
+// Timeout monitoring function
+void check_timeouts() {
+    time_t now = time(NULL);
+    
+    for (int i = 0; i < num_children; i++) {
+        if (!child_table[i].timed_out && 
+            (now - child_table[i].start_time > CHILD_TIMEOUT)) {
+            
+            pid_t pid = child_table[i].pid;
+            printf("Terminating child %d due to timeout\n", pid);
+            fflush(stdout);
+            
+            // Try graceful termination first
+            kill(pid, SIGTERM);
+            sleep(1);
+            
+            // Force kill if still running
+            if (waitpid(pid, NULL, WNOHANG) == 0) {
+                kill(pid, SIGKILL);
+                waitpid(pid, NULL, 0);  // Reap the zombie
+            }
+            
+            child_table[i].timed_out = 1;
+            child_count++;
+        }
     }
 }
 
@@ -224,15 +271,33 @@ int main(int argc, char *argv[]) {
 
     // Fork child processes
     pid_t child1 = fork();
-    if (child1 == 0) child_process1();
+    if (child1 == 0) {
+        child_process1()
+    } else {
+        if (num_children < MAX_CHILDREN) {
+            child_table[num_children].pid = child1;
+            child_table[num_children].start_time = time(NULL);
+            child_table[num_children].timed_out = 0;
+            num_children++;
+        }
+    }
     
     pid_t child2 = fork();
-    if (child2 == 0) child_process2();
+    if (child2 == 0) {
+        child_process2()
+    } else {
+        if (num_children < MAX_CHILDREN) {
+            child_table[num_children].pid = child2;
+            child_table[num_children].start_time = time(NULL);
+            child_table[num_children].timed_out = 0;
+            num_children++;
+        }
+    }
     
     total_children = 2;
     printf("Daemon started. Child PIDs: %d, %d\n", child1, child2);
     fflush(stdout);
-    // Parent (now daemon) writes to FIFO1
+    // Parent (daemon) writes to FIFO1
     int fd1 = open(FIFO1, O_WRONLY);
     if (fd1 == -1) {
         fprintf(stderr, "open FIFO1 failed");
@@ -246,24 +311,10 @@ int main(int argc, char *argv[]) {
     }
     close(fd1);
 
-    // Timeout monitoring
-    time_t start_time = time(NULL);
+   
     while (child_count < total_children) {
-        time_t now = time(NULL);
-        
-        // Check for timeouts
-        if (now - start_time > CHILD_TIMEOUT) {
-            if (waitpid(child2, NULL, WNOHANG) == 0) { // Child2 still running
-                printf("Terminating child2 (PID %d) due to timeout\n", child2);
-                fflush(stdout);
-                kill(child2, SIGTERM);
-                sleep(1); // Give it a chance to terminate
-                if (waitpid(child2, NULL, WNOHANG) == 0) {
-                    kill(child2, SIGKILL);
-                }
-                child_count++;
-            }
-        }
+        // Timeout monitoring
+        check_timeouts();
         printf("Proceeding...\n");
         fflush(stdout);
         sleep(2);
