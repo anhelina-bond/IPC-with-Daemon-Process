@@ -119,17 +119,6 @@ int become_daemon() {
         dup2(null_fd, STDIN_FILENO);
         close(null_fd);
     }
-    
-    // Set up signal handlers
-    struct sigaction sa;
-    sa.sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
-    sigaction(SIGCHLD, &sa, NULL);
-    
-    sa.sa_handler = daemon_signal_handler;
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGHUP, &sa, NULL);
 
     return 0;
 }
