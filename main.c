@@ -216,7 +216,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "sigaction failed\n");
         unlink(FIFO1);
         unlink(FIFO2);
-        shmctl(shmid, IPC_RMID, NULL);
         exit(EXIT_FAILURE);
     }
 
