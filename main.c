@@ -272,7 +272,7 @@ int main(int argc, char *argv[]) {
     // Fork child processes
     pid_t child1 = fork();
     if (child1 == 0) {
-        child_process1()
+        child_process1();
     } else {
         if (num_children < MAX_CHILDREN) {
             child_table[num_children].pid = child1;
@@ -284,7 +284,7 @@ int main(int argc, char *argv[]) {
     
     pid_t child2 = fork();
     if (child2 == 0) {
-        child_process2()
+        child_process2();
     } else {
         if (num_children < MAX_CHILDREN) {
             child_table[num_children].pid = child2;
