@@ -1,7 +1,14 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11
+CFLAGS = -Wall -Wextra -std=c11 -pedantic
 SRC = main.c
 TARGET = daemon
+ARGS = $(wordlist 2, $(words $(MAKECMDGOALS)), $(MAKECMDGOALS))
+NUM_ARGS = $(words $(ARGS))
+
+# Prevent make from treating args as targets
+$(eval $(ARGS):;@:)
+
+.PHONY: all compile clean run
 
 all: clean compile
 
