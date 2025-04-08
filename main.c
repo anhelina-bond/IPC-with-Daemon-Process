@@ -80,7 +80,7 @@ void daemon_signal_handler(int sig) {
             snprintf(buf, sizeof(buf), "[%s] SIGHUP received\n", time_str);
             break;
         case SIGTERM:
-            snprintf(buf, sizeof(buf), "[%s] SIGTERM received - daemon exiting\n", time_str);
+            snprintf(buf, sizeof(buf), "[%s] SIGTERM received - exiting\n", time_str);
             break;
         default:
             return;
@@ -231,11 +231,6 @@ int main(int argc, char *argv[]) {
         sigaction(SIGUSR1, &dsa, NULL);
         sigaction(SIGHUP, &dsa, NULL);
         sigaction(SIGTERM, &dsa, NULL);
-
-        // // Daemon main loop
-        // while (1) {
-        //     sleep(5);  // Check every 5 seconds
-        // }
     }
 
     
@@ -273,6 +268,11 @@ int main(int argc, char *argv[]) {
     pid_t child1 = fork();
     if (child1 == 0) {
         child_process1();
+    } else if (child1 == -1) {
+        fprintf(stderr, "fork failed for child1\n");
+        unlink(FIFO1);
+        unlink(FIFO2);
+        exit(EXIT_FAILURE);
     } else {
         if (num_children < MAX_CHILDREN) {
             child_table[num_children].pid = child1;
@@ -285,6 +285,11 @@ int main(int argc, char *argv[]) {
     pid_t child2 = fork();
     if (child2 == 0) {
         child_process2();
+    } else if (child2 == -1) {
+        fprintf(stderr, "fork failed for child2\n");
+        unlink(FIFO1);
+        unlink(FIFO2);
+        exit(EXIT_FAILURE);
     } else {
         if (num_children < MAX_CHILDREN) {
             child_table[num_children].pid = child2;
